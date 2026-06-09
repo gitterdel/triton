@@ -71,6 +71,20 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
         blocked.push({ decision: d, why: "kill switch activo (cap de pérdida diaria alcanzado)" });
         continue;
       }
+      // Cooldown post-stop: si este token nos sacó con pérdida en las últimas
+      // 24h, no se recompra (evita morir a whipsaws en el mismo token).
+      const recentLoss = portfolio.history.some(
+        (f) =>
+          f.order.symbol === d.symbol &&
+          f.order.side === "SELL" &&
+          (f.realizedPnlUsd ?? 0) < 0 &&
+          Date.parse(d.signal.timestamp || new Date().toISOString()) - Date.parse(f.executedAt) <
+            24 * 3600 * 1000,
+      );
+      if (recentLoss) {
+        blocked.push({ decision: d, why: "cooldown 24h tras stop-loss en este token" });
+        continue;
+      }
       if (portfolio.positions.length >= RISK_LIMITS.maxOpenPositions) {
         blocked.push({ decision: d, why: `máximo de posiciones abiertas (${RISK_LIMITS.maxOpenPositions})` });
         continue;

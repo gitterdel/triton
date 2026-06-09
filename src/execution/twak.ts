@@ -45,6 +45,13 @@ function swapArgs(order: Order, quoteOnly: boolean): string[] {
 export const twakExecutor: Executor = {
   name: "twak",
   async execute(order: Order): Promise<Fill> {
+    // 0. Allowlist: solo tokens elegibles de la competición. Guardarraíl a
+    //    nivel de ejecución — aunque la estrategia se equivocara, aquí no pasa.
+    const { config } = await import("../config.js");
+    if (!(order.symbol in config.watchlist)) {
+      throw new Error(`${order.symbol} no está en el allowlist de tokens elegibles — orden rechazada`);
+    }
+
     // 1. Quote y validación de impacto de precio
     const quote = parseJson(await twak(swapArgs(order, true)));
     const impact = Math.abs(Number(quote.priceImpact ?? 0));

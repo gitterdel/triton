@@ -51,6 +51,17 @@ export async function tick(): Promise<void> {
     }
   }
 
+  // Regla de la competición: mínimo 1 trade al día. Si a la hora límite no
+  // hubo ninguno, se fuerza uno pequeño en el token de compliance.
+  if (config.executionMode === "live") {
+    try {
+      const forced = await ensureDailyCompliance(portfolio, ctx);
+      if (forced) executed.push(forced);
+    } catch (err) {
+      console.error("  ❌ Compliance trade falló:", (err as Error).message);
+    }
+  }
+
   savePortfolio(portfolio);
   writeTickState(ctx, decisions, { orders, blocked, killSwitchActive }, executed, portfolio, executor.name);
   await publishState();
@@ -89,6 +100,58 @@ export async function fastCheck(): Promise<void> {
   }
   savePortfolio(portfolio);
   await publishState();
+}
+
+// Garantiza el mínimo de 1 trade/día que exige la competición. Si no hubo
+// ningún fill hoy (UTC) y ya pasó la hora límite, compra una posición pequeña
+// del token de compliance (o cierra la posición más pequeña si no hay cash).
+async function ensureDailyCompliance(
+  portfolio: ReturnType<typeof loadPortfolio>,
+  ctx: Awaited<ReturnType<typeof fetchMarketContext>>,
+): Promise<TickState["ordersExecuted"][number] | null> {
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const tradedToday = portfolio.history.some((f) => f.executedAt.slice(0, 10) === todayUtc);
+  if (tradedToday || new Date().getUTCHours() < config.complianceHourUtc) return null;
+
+  const sig = ctx.signals.find((s) => s.symbol === config.complianceSymbol);
+  if (!sig) return null;
+
+  let order;
+  if (portfolio.cashUsd >= config.complianceTradeUsd) {
+    order = {
+      symbol: config.complianceSymbol,
+      side: "BUY" as const,
+      amountUsd: config.complianceTradeUsd,
+      priceUsd: sig.priceUsd,
+      reason: "COMPLIANCE: mínimo 1 trade/día de la competición",
+    };
+  } else {
+    // Sin cash: cerrar la posición más pequeña también cuenta como trade
+    const smallest = [...portfolio.positions].sort(
+      (a, b) => a.qty * a.avgEntryUsd - b.qty * b.avgEntryUsd,
+    )[0];
+    if (!smallest) return null;
+    const price = ctx.signals.find((s) => s.symbol === smallest.symbol)?.priceUsd ?? smallest.avgEntryUsd;
+    order = {
+      symbol: smallest.symbol,
+      side: "SELL" as const,
+      amountUsd: smallest.qty * price,
+      priceUsd: price,
+      reason: "COMPLIANCE: mínimo 1 trade/día (cierre por falta de cash)",
+    };
+  }
+
+  const fill = await executor.execute(order);
+  applyFill(portfolio, fill);
+  console.log(`  📋 COMPLIANCE ${order.side} ${order.symbol} $${order.amountUsd.toFixed(2)}`);
+  return {
+    side: order.side,
+    symbol: order.symbol,
+    amountUsd: order.amountUsd,
+    priceUsd: order.priceUsd,
+    reason: order.reason,
+    txHash: fill.txHash,
+  };
 }
 
 export async function runLoop(): Promise<void> {

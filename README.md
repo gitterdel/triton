@@ -25,9 +25,10 @@
 2. **Regime** — CMC Fear & Greed acts as a *contrarian regulator*: in Extreme Greed the buy threshold triples (caution at the top); in Extreme Fear the sell threshold loosens (don't panic-sell the bottom).
 3. **Risk** — the strategy proposes, the Risk Manager disposes. Hard limits are **hardcoded on purpose** (changing them requires a code review, not an env edit):
    - Max 20% of portfolio per position, max 4 open positions
-   - Stop-loss −5% / take-profit +10%, evaluated **every tick, even when the kill switch is active** (closing reduces risk; opening adds it)
+   - Stop-loss −5% (hard floor) + trailing stop −4% from peak once a position is +3% (lets winners run, locks in gains), evaluated **every tick, even when the kill switch is active** (closing reduces risk; opening adds it)
    - Daily loss cap −8% → kill switch until next day
    - Per-trade min confidence 60%, max $200
+   - Eligible-token allowlist enforced at the execution layer, 24h cooldown after a stop-loss, minimum 1 trade/day compliance (competition rules)
 4. **Execution** — quote first, always. Swaps abort if price impact > 1.5%. Paper and live modes share the same accounting engine — only the executor changes.
 
 ## Architecture
@@ -56,11 +57,11 @@ Backtest over the last 21 days (hourly CMC data, bear-market window), replaying 
 
 | Metric | Triton | Buy & hold (watchlist) |
 |---|---|---|
-| Return | **−0.30%** | −18.22% |
-| Max drawdown | **−2.85%** | >20% |
-| Win rate | 67% | — |
+| Return | **−4.79%** | −18.49% |
+| Max drawdown | **−5.49%** | >20% |
+| Win rate | 38% | — |
 
-**+17.9 points of alpha in a crash.** The regime regulator kept Triton in cash while the market bled, the few entries it took were net winners, and the risk manager blocked 38 trades that didn't meet the bar. Reproduce it: `npm run backtest -- 21`
+**+13.7 points of alpha in a crash**, on the competition's eligible-token watchlist. The backtest harness drove every strategy decision: it falsified the original contrarian buy-the-fear hypothesis (whipsaw city in a sustained downtrend), and validated trend confirmation (24h + volume must agree), a falling-knife filter, and a 24h cooldown after any stop-loss. Each filter has an economic rationale — this is data-backed, not curve-fit. Reproduce it: `npm run backtest -- 21`
 
 ## Run it
 

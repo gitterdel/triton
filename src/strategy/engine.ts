@@ -13,9 +13,12 @@ function momentumScore(s: TokenSignal): number {
 }
 
 function regimeAdjustment(fearGreed: number): { buyThreshold: number; sellThreshold: number } {
-  // Base: comprar si score > 1.5, vender si score < -2
+  // Base: comprar si score > 1.5, vender si score < -2.
+  // El backtest desmintió la versión contrarian original (buyTh=1 en fear
+  // producía whipsaws constantes en tendencia bajista): en los extremos del
+  // sentimiento se exige MÁS momentum para entrar, no menos.
   if (fearGreed >= 75) return { buyThreshold: 3, sellThreshold: -1.5 }; // greed: cautela al comprar
-  if (fearGreed <= 25) return { buyThreshold: 1, sellThreshold: -4 }; // fear: oportunidad, no pánico
+  if (fearGreed <= 25) return { buyThreshold: 3, sellThreshold: -4 }; // fear: solo momentum fuerte y confirmado
   return { buyThreshold: 1.5, sellThreshold: -2 };
 }
 
@@ -31,7 +34,12 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
       `F&G=${ctx.fearGreedValue} (${ctx.fearGreedLabel}) -> buyTh=${buyThreshold}, sellTh=${sellThreshold}`,
     ];
 
-    if (score >= buyThreshold && !held.has(s.symbol)) {
+    // Filtros de confirmación anti-whipsaw (validados por backtest):
+    // - el 24h debe acompañar (no comprar rebotes de 1h dentro de caídas)
+    // - no comprar cuchillos cayendo (7d peor que -15%)
+    const confirmed = s.percentChange24h > 0 && s.percentChange7d > -15 && s.volumeChange24h > 0;
+
+    if (score >= buyThreshold && confirmed && !held.has(s.symbol)) {
       const confidence = Math.min(0.95, 0.5 + (score - buyThreshold) / 10);
       return { symbol: s.symbol, action: "BUY" as const, confidence, reasons, signal: s };
     }

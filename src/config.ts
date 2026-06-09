@@ -10,17 +10,28 @@ export const config = {
   // Vigilancia rápida de stops entre ticks completos ("drawdown = reaction time")
   fastCheckSeconds: Number(process.env.FAST_CHECK_SECONDS ?? 60),
 
-  // Tokens con buena liquidez en PancakeSwap (BSC). symbol -> CMC id.
+  // Tokens de la lista ELEGIBLE de la competición (149 BEP-20 en CMC) con
+  // buena liquidez en BSC. symbol -> CMC id. OJO: BNB, BTCB y SOL NO son
+  // elegibles — trades fuera de la lista no puntúan.
   watchlist: {
-    BNB: 1839,
-    CAKE: 7186,
     ETH: 1027,
-    BTCB: 4023,
+    CAKE: 7186,
     XRP: 52,
-    SOL: 5426,
     DOGE: 74,
     ADA: 2010,
+    LINK: 1975,
+    AVAX: 5805,
+    DOT: 6636,
+    UNI: 7083,
+    LTC: 2,
+    TWT: 5964,
+    FET: 3773,
   } as Record<string, number>,
+
+  // Trade mínimo diario de la competición (1/día obligatorio en la semana live)
+  complianceSymbol: "ETH",
+  complianceTradeUsd: 12,
+  complianceHourUtc: 18, // si a las 18:00 UTC no hubo trade hoy, se fuerza uno
 };
 
 // Límites duros de riesgo. El RiskManager los aplica SIEMPRE,
