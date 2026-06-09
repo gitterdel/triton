@@ -26,10 +26,16 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
   const { buyThreshold, sellThreshold } = regimeAdjustment(ctx.fearGreedValue);
   const held = new Set(portfolio.positions.map((p) => p.symbol));
 
+  const trending = new Set(ctx.trending);
+
   return ctx.signals.map((s) => {
-    const score = momentumScore(s);
+    let score = momentumScore(s);
+    // Boost de atención: momentum positivo + trending en CMC = mayor
+    // probabilidad de continuación (la atención amplifica los movimientos).
+    const isTrending = trending.has(s.symbol);
+    if (isTrending && score > 0) score *= 1.2;
     const reasons: string[] = [
-      `momentum=${score.toFixed(2)} (1h=${s.percentChange1h.toFixed(2)}%, 24h=${s.percentChange24h.toFixed(2)}%, 7d=${s.percentChange7d.toFixed(2)}%)`,
+      `momentum=${score.toFixed(2)} (1h=${s.percentChange1h.toFixed(2)}%, 24h=${s.percentChange24h.toFixed(2)}%, 7d=${s.percentChange7d.toFixed(2)}%)${isTrending ? " 🔥trending" : ""}`,
       `volChange24h=${s.volumeChange24h.toFixed(1)}%`,
       `F&G=${ctx.fearGreedValue} (${ctx.fearGreedLabel}) -> buyTh=${buyThreshold}, sellTh=${sellThreshold}`,
     ];

@@ -20,6 +20,7 @@ export interface TickState {
   fearGreedValue: number;
   fearGreedLabel: string;
   killSwitchActive: boolean;
+  trending: string[];
   decisions: {
     symbol: string;
     action: string;
@@ -29,6 +30,7 @@ export interface TickState {
     pct1h: number;
     pct24h: number;
     pct7d: number;
+    trending: boolean;
   }[];
   blocked: { symbol: string; action: string; why: string }[];
   ordersExecuted: { side: string; symbol: string; amountUsd: number; priceUsd: number; reason: string; txHash?: string }[];
@@ -92,6 +94,7 @@ export function writeTickState(
     fearGreedValue: ctx.fearGreedValue,
     fearGreedLabel: ctx.fearGreedLabel,
     killSwitchActive: risk.killSwitchActive,
+    trending: ctx.trending.filter((t) => ctx.signals.some((s) => s.symbol === t)),
     decisions: decisions.map((d) => ({
       symbol: d.symbol,
       action: d.action,
@@ -101,6 +104,7 @@ export function writeTickState(
       pct1h: d.signal.percentChange1h,
       pct24h: d.signal.percentChange24h,
       pct7d: d.signal.percentChange7d,
+      trending: ctx.trending.includes(d.symbol),
     })),
     blocked: risk.blocked.map((b) => ({ symbol: b.decision.symbol, action: b.decision.action, why: b.why })),
     ordersExecuted: executed,

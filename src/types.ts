@@ -15,6 +15,7 @@ export interface MarketContext {
   fearGreedValue: number; // 0-100
   fearGreedLabel: string; // "Extreme Fear" .. "Extreme Greed"
   signals: TokenSignal[];
+  trending: string[]; // símbolos trending en CMC (señal de atención/narrativa)
 }
 
 export type Action = "BUY" | "SELL" | "HOLD";

@@ -130,7 +130,7 @@ async function main(): Promise<void> {
       portfolio.dailyPnlUsd = 0;
     }
     const fg = fgByDay.get(day) ?? 50;
-    const ctx: MarketContext = { signals, fearGreedValue: fg, fearGreedLabel: String(fg) };
+    const ctx: MarketContext = { signals, fearGreedValue: fg, fearGreedLabel: String(fg), trending: [] };
 
     const decisions = decide(ctx, portfolio);
     const { orders, blocked } = applyRisk(decisions, portfolio, signals);

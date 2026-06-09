@@ -64,7 +64,25 @@ export async function fetchFearGreed(): Promise<{ value: number; label: string }
   return { value: res.data.value, label: res.data.value_classification };
 }
 
+// Tokens trending en CMC: proxy de atención/narrativa de mercado. La atención
+// amplifica el momentum — un token con momentum Y trending tiene más
+// probabilidad de continuación. Falla en silencio (señal opcional).
+export async function fetchTrending(): Promise<string[]> {
+  try {
+    const res = await cmcGet<{ data: { symbol: string }[] }>("/v1/cryptocurrency/trending/latest", {
+      limit: "30",
+    });
+    return res.data.map((d) => d.symbol);
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchMarketContext(): Promise<MarketContext> {
-  const [signals, fearGreed] = await Promise.all([fetchQuotes(), fetchFearGreed()]);
-  return { signals, fearGreedValue: fearGreed.value, fearGreedLabel: fearGreed.label };
+  const [signals, fearGreed, trending] = await Promise.all([
+    fetchQuotes(),
+    fetchFearGreed(),
+    fetchTrending(),
+  ]);
+  return { signals, fearGreedValue: fearGreed.value, fearGreedLabel: fearGreed.label, trending };
 }
