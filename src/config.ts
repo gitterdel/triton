@@ -25,6 +25,10 @@ export const config = {
     // DOT: { id: 6636, address: "0x7083609fCE4d1d8Dc0C979AAb8c869Ea2C873402" }, // TEST: perdedor consistente
     // UNI: { id: 7083, address: "0xBf5140A22578168FD562DCcF235E5D43A02ce9B1" }, // TEST: perdedor consistente
     ATOM: { id: 3794, address: "0x0Eb3a705fc54725037CC9e008bDede697f62F335" },
+    // BANQUILLO estructural (alto score en selector, pero el backtest no
+    // mejora con ellos en esta ventana — re-evaluar con selector el 19 jun):
+    //   TON: { id: 11419, address: "0x76A797A59Ba2C17726896976B7B3747BfD1d220f" },
+    //   PENDLE: { id: 9481, address: "0xb3Ed0A426155B79B898849803E3B36552f7ED507" },
     LTC: { id: 2, address: "0x4338665CBB7B2485A8855A139b75D5e34AB0DB94" },
     TWT: { id: 5964, address: "0x4B0F1812e5Df2A09796481Ff14017e6005508003" },
     FET: { id: 3773, address: "0x031b41e504677879370e9DBcF937283A8691Fa7f" },
