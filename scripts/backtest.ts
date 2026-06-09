@@ -130,7 +130,16 @@ async function main(): Promise<void> {
       portfolio.dailyPnlUsd = 0;
     }
     const fg = fgByDay.get(day) ?? 50;
-    const ctx: MarketContext = { signals, fearGreedValue: fg, fearGreedLabel: String(fg), trending: [] };
+
+    // Máximo rodante de 48h por símbolo (excluyendo la hora actual)
+    const high48h: Record<string, number> = {};
+    for (const [sym, h] of histories) {
+      let hi = 0;
+      for (let j = Math.max(0, i - 48); j < i; j++) hi = Math.max(hi, h[j].price);
+      high48h[sym] = hi;
+    }
+
+    const ctx: MarketContext = { signals, fearGreedValue: fg, fearGreedLabel: String(fg), trending: [], high48h };
 
     const decisions = decide(ctx, portfolio);
     const { orders, blocked } = applyRisk(decisions, portfolio, signals);

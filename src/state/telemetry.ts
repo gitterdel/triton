@@ -184,3 +184,24 @@ export function readEquity(): EquityPoint[] {
   if (!existsSync(EQUITY_FILE)) return [];
   return JSON.parse(readFileSync(EQUITY_FILE, "utf-8"));
 }
+
+// Máximo de precio por símbolo en las últimas N horas, reconstruido de
+// nuestro propio log de señales (para detectar breakouts en vivo).
+export function readRecentHighs(hours: number): Record<string, number> {
+  if (!existsSync(SIGNALS_LOG)) return {};
+  const cutoff = Date.now() - hours * 3600_000;
+  const highs: Record<string, number> = {};
+  for (const line of readFileSync(SIGNALS_LOG, "utf-8").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line) as { t: string; signals: { sym: string; px: number }[] };
+      if (Date.parse(entry.t) < cutoff) continue;
+      for (const s of entry.signals) {
+        if (!(s.sym in highs) || s.px > highs[s.sym]) highs[s.sym] = s.px;
+      }
+    } catch {
+      /* línea corrupta: ignorar */
+    }
+  }
+  return highs;
+}

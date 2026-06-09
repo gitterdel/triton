@@ -61,7 +61,7 @@ Backtest over the last 21 days (hourly CMC data, bear-market window), replaying 
 | Max drawdown | **−4.80%** | >20% |
 | Win rate | 40% | — |
 
-**+15.4 points of alpha in a crash**, on the competition's eligible-token watchlist. Triton runs a regime-gated ensemble: a momentum module (buys confirmed strength, trailing-stop exits) and a mean-reversion RANGE module that only wakes when both the token AND the global market are sideways. The backtest harness drove every decision — it falsified contrarian buy-the-fear, falsified an ungated range module (-6.5%: in a bear, "sideways" is consolidation before breakdown), and validated trend+volume confirmation, falling-knife filters, post-stop cooldowns, and the double-gated ensemble. Data-backed, not curve-fit. Reproduce it: `npm run backtest -- 21`
+**+15.4 points of alpha in a crash**, on the competition's eligible-token watchlist. Triton runs a regime-gated three-module ensemble: MOMENTUM (buys confirmed strength, trailing-stop exits), RANGE (mean reversion, only wakes when token AND global market are sideways) and BREAKOUT (48h-high breaks with volume, only wakes in healthy risk-on markets — validated to do zero harm in bear data, designed to capture bull weeks). The backtest harness drove every decision — it falsified contrarian buy-the-fear, falsified an ungated range module (-6.5%: in a bear, "sideways" is consolidation before breakdown), and validated trend+volume confirmation, falling-knife filters, post-stop cooldowns, and the double-gated ensemble. Data-backed, not curve-fit. Reproduce it: `npm run backtest -- 21`
 
 ## Run it
 

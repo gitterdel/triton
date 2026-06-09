@@ -16,6 +16,10 @@ export async function tick(): Promise<void> {
   console.log(`\n=== TICK ${ts} [${executor.name}] ===`);
 
   const ctx = await fetchMarketContext();
+  // Máximos de 48h desde nuestro propio log (breakouts). Se calcula ANTES de
+  // registrar el tick actual, así el máximo no incluye el precio de ahora.
+  const { readRecentHighs } = await import("./state/telemetry.js");
+  ctx.high48h = readRecentHighs(48);
   console.log(`F&G: ${ctx.fearGreedValue} (${ctx.fearGreedLabel}) | ${ctx.signals.length} señales`);
 
   const portfolio = loadPortfolio();

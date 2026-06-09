@@ -17,6 +17,15 @@ export const STRATEGY_PARAMS = {
     fear: { fg: "<=25", buyThreshold: 3, sellThreshold: -4 },
   },
   buyConfirmation: "24h > 0 AND 7d > -15% AND volume24h rising",
+  // Módulo BREAKOUT: compra rupturas de máximos de 48h con volumen.
+  // Entra al nacer la tendencia, antes de que el momentum acumulado confirme.
+  breakout: {
+    entryIf: "precio > máximo 48h × 1.005 AND vol24h subiendo >25% AND 1h > +0.3%",
+    minPct7d: -10, // no comprar rupturas dentro de desplomes del token
+    maxMarketDecline7d: -3, // ni con el mercado global cayendo (bear rallies)
+    minFearGreed: 35, // las rupturas sostenibles necesitan apetito de riesgo
+    exits: "como momentum: stop -5% + trailing",
+  },
   // Módulo RANGE (reversión a la media): solo opera en mercado lateral.
   // Doble puerta validada por backtest: el TOKEN debe estar lateral Y el
   // MERCADO GLOBAL también — en bajista, lo "lateral" es consolidación
@@ -79,6 +88,33 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     if (score <= sellThreshold && held.has(s.symbol)) {
       const confidence = Math.min(0.95, 0.5 + (sellThreshold - score) / 10);
       return { symbol: s.symbol, action: "SELL" as const, confidence, reasons, signal: s, strategy: "momentum" as const };
+    }
+
+    // Módulo BREAKOUT: ruptura de máximos de 48h con confirmación de volumen.
+    const B = STRATEGY_PARAMS.breakout;
+    const hi48 = ctx.high48h?.[s.symbol];
+    if (
+      hi48 &&
+      s.priceUsd > hi48 * 1.005 &&
+      s.volumeChange24h > 25 &&
+      s.percentChange1h > 0.3 &&
+      s.percentChange7d > B.minPct7d &&
+      marketAvg7d > B.maxMarketDecline7d &&
+      ctx.fearGreedValue >= B.minFearGreed &&
+      !held.has(s.symbol)
+    ) {
+      const confidence = Math.min(0.9, 0.62 + s.volumeChange24h / 300);
+      return {
+        symbol: s.symbol,
+        action: "BUY" as const,
+        confidence,
+        reasons: [
+          `BREAKOUT: precio ${s.priceUsd.toFixed(4)} > máximo 48h ${hi48.toFixed(4)} con volumen +${s.volumeChange24h.toFixed(0)}%`,
+          ...reasons.slice(1),
+        ],
+        signal: s,
+        strategy: "breakout" as const,
+      };
     }
 
     // Módulo RANGE: si momentum no ve nada, buscar reversión a la media en
