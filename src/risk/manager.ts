@@ -28,7 +28,14 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
   for (const pos of portfolio.positions) {
     const sig = signals.find((s) => s.symbol === pos.symbol);
     if (!sig) continue;
+
+    // Actualizar máximo visto (se persiste al guardar el portfolio)
+    pos.peakUsd = Math.max(pos.peakUsd ?? pos.avgEntryUsd, sig.priceUsd);
+
     const change = (sig.priceUsd - pos.avgEntryUsd) / pos.avgEntryUsd;
+    const peakGain = (pos.peakUsd - pos.avgEntryUsd) / pos.avgEntryUsd;
+    const fromPeak = (sig.priceUsd - pos.peakUsd) / pos.peakUsd;
+
     if (change <= -RISK_LIMITS.stopLossPct) {
       orders.push({
         symbol: pos.symbol,
@@ -37,13 +44,13 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
         priceUsd: sig.priceUsd,
         reason: `STOP-LOSS: ${(change * 100).toFixed(2)}% desde entrada ${pos.avgEntryUsd.toFixed(4)}`,
       });
-    } else if (change >= RISK_LIMITS.takeProfitPct) {
+    } else if (peakGain >= RISK_LIMITS.trailingActivationPct && fromPeak <= -RISK_LIMITS.trailingStopPct) {
       orders.push({
         symbol: pos.symbol,
         side: "SELL",
         amountUsd: pos.qty * sig.priceUsd,
         priceUsd: sig.priceUsd,
-        reason: `TAKE-PROFIT: +${(change * 100).toFixed(2)}% desde entrada ${pos.avgEntryUsd.toFixed(4)}`,
+        reason: `TRAILING-STOP: ${(fromPeak * 100).toFixed(2)}% desde pico ${pos.peakUsd.toFixed(4)} (asegura +${(change * 100).toFixed(2)}%)`,
       });
     }
   }

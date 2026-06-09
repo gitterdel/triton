@@ -32,7 +32,11 @@ export const RISK_LIMITS = {
   minTradeUsd: 10,
   maxTradeUsd: 200,
   stopLossPct: 0.05, // cerrar si la posición cae 5% desde la entrada
-  takeProfitPct: 0.1, // cerrar si sube 10%
+  // Trailing stop en vez de take-profit fijo: deja correr a los ganadores y
+  // asegura beneficio. Se activa cuando la posición supera el umbral de
+  // activación; a partir de ahí, cierra si cae X% desde el máximo visto.
+  trailingStopPct: 0.04, // cerrar si cae 4% desde el pico
+  trailingActivationPct: 0.03, // el trailing se arma a partir de +3% sobre entrada
   dailyLossCapPct: 0.08, // si el día acumula -8%, kill switch hasta mañana
   minConfidenceToTrade: 0.6,
   simulatedFeePct: 0.0025, // 0.25% por lado, aprox PancakeSwap

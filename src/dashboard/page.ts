@@ -58,6 +58,8 @@ export const HTML = /* html */ `<!DOCTYPE html>
       <div class="stat"><div class="v" id="pnl">—</div><div class="l">Realized PnL</div></div>
       <div class="stat"><div class="v" id="daily">—</div><div class="l">PnL Today</div></div>
       <div class="stat"><div class="v" id="trades">—</div><div class="l">Trades</div></div>
+      <div class="stat"><div class="v" id="maxdd">—</div><div class="l">Max Drawdown</div></div>
+      <div class="stat"><div class="v" id="winrate">—</div><div class="l">Win Rate</div></div>
     </div>
   </div>
   <div class="panel">
@@ -122,6 +124,9 @@ async function refresh() {
     $("daily").textContent = usd(p.dailyPnlUsd);
     $("daily").className = "v " + cls(p.dailyPnlUsd);
     $("trades").textContent = p.tradeCount;
+    $("maxdd").textContent = p.maxDrawdownPct !== undefined ? "-" + p.maxDrawdownPct.toFixed(2) + "%" : "—";
+    $("maxdd").className = "v " + (p.maxDrawdownPct > 4 ? "neg" : "pos");
+    $("winrate").textContent = p.winRate != null ? p.winRate.toFixed(0) + "% (" + p.closedTrades + ")" : "—";
 
     $("fg").textContent = state.fearGreedValue;
     $("fgl").textContent = state.fearGreedLabel;

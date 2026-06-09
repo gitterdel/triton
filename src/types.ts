@@ -40,6 +40,7 @@ export interface Fill {
   executedAt: string;
   txHash?: string; // presente en modo live
   fee: number;
+  realizedPnlUsd?: number; // solo en SELL: PnL realizado de la posición cerrada
 }
 
 export interface Position {
@@ -47,6 +48,7 @@ export interface Position {
   qty: number;
   avgEntryUsd: number;
   openedAt: string;
+  peakUsd?: number; // máximo visto desde la entrada (para el trailing stop)
 }
 
 export interface Portfolio {

@@ -46,6 +46,7 @@ export function applyFill(p: Portfolio, fill: Fill): void {
         qty,
         avgEntryUsd: order.priceUsd,
         openedAt: fill.executedAt,
+        peakUsd: order.priceUsd,
       });
     }
     p.cashUsd -= order.amountUsd;
@@ -58,6 +59,7 @@ export function applyFill(p: Portfolio, fill: Fill): void {
     p.cashUsd += proceeds;
     p.realizedPnlUsd += pnl;
     p.dailyPnlUsd += pnl;
+    fill.realizedPnlUsd = pnl;
     p.positions = p.positions.filter((x) => x.symbol !== order.symbol);
   }
   p.history.push(fill);

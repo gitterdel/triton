@@ -39,7 +39,20 @@ export interface TickState {
     dailyPnlUsd: number;
     positions: { symbol: string; qty: number; avgEntryUsd: number; currentUsd: number; pnlPct: number; openedAt: string }[];
     tradeCount: number;
+    maxDrawdownPct: number;
+    winRate: number | null; // null hasta que haya trades cerrados
+    closedTrades: number;
   };
+}
+
+function maxDrawdownPct(equity: EquityPoint[]): number {
+  let peak = -Infinity;
+  let maxDd = 0;
+  for (const p of equity) {
+    peak = Math.max(peak, p.totalUsd);
+    maxDd = Math.max(maxDd, (peak - p.totalUsd) / peak);
+  }
+  return maxDd * 100;
 }
 
 export function writeTickState(
@@ -63,6 +76,15 @@ export function writeTickState(
     };
   });
   const totalUsd = portfolio.cashUsd + positions.reduce((s, p) => s + p.currentUsd, 0);
+
+  // Curva de equity (se actualiza primero para poder calcular el drawdown)
+  let equity: EquityPoint[] = [];
+  if (existsSync(EQUITY_FILE)) equity = JSON.parse(readFileSync(EQUITY_FILE, "utf-8"));
+  equity.push({ t: new Date().toISOString(), totalUsd, cashUsd: portfolio.cashUsd });
+  if (equity.length > MAX_EQUITY_POINTS) equity = equity.slice(-MAX_EQUITY_POINTS);
+
+  const closed = portfolio.history.filter((f) => f.order.side === "SELL" && f.realizedPnlUsd !== undefined);
+  const wins = closed.filter((f) => (f.realizedPnlUsd ?? 0) > 0).length;
 
   const state: TickState = {
     lastTick: new Date().toISOString(),
@@ -89,6 +111,9 @@ export function writeTickState(
       dailyPnlUsd: portfolio.dailyPnlUsd,
       positions,
       tradeCount: portfolio.history.length,
+      maxDrawdownPct: maxDrawdownPct(equity),
+      winRate: closed.length ? (wins / closed.length) * 100 : null,
+      closedTrades: closed.length,
     },
   };
 
@@ -116,11 +141,6 @@ export function writeTickState(
     }) + "\n",
   );
 
-  // Curva de equity
-  let equity: EquityPoint[] = [];
-  if (existsSync(EQUITY_FILE)) equity = JSON.parse(readFileSync(EQUITY_FILE, "utf-8"));
-  equity.push({ t: state.lastTick, totalUsd, cashUsd: portfolio.cashUsd });
-  if (equity.length > MAX_EQUITY_POINTS) equity = equity.slice(-MAX_EQUITY_POINTS);
   writeFileSync(EQUITY_FILE, JSON.stringify(equity));
 }
 
