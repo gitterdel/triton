@@ -34,6 +34,13 @@ interface HistPoint {
 
 async function fetchHistory(cmcId: number): Promise<HistPoint[]> {
   const count = DAYS * 24 + WARMUP_H;
+  // Caché en disco (1h de vigencia) para iterar en los parámetros sin
+  // quemar créditos de API en cada ejecución.
+  const { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } = await import("node:fs");
+  const cacheFile = `data/hist-cache-${cmcId}-${count}.json`;
+  if (existsSync(cacheFile) && Date.now() - statSync(cacheFile).mtimeMs < 3600_000) {
+    return JSON.parse(readFileSync(cacheFile, "utf-8"));
+  }
   const res = await cmcGet<{
     data: { quotes: { timestamp: string; quote: { USD: { price: number; volume_24h: number } } }[] };
   }>("/v2/cryptocurrency/quotes/historical", {
@@ -41,11 +48,14 @@ async function fetchHistory(cmcId: number): Promise<HistPoint[]> {
     interval: "1h",
     count: String(Math.min(count, 10000)),
   });
-  return res.data.quotes.map((q) => ({
+  const points = res.data.quotes.map((q) => ({
     t: new Date(q.timestamp).getTime(),
     price: q.quote.USD.price,
     vol24h: q.quote.USD.volume_24h,
   }));
+  mkdirSync("data", { recursive: true });
+  writeFileSync(cacheFile, JSON.stringify(points));
+  return points;
 }
 
 async function fetchFearGreedHistory(): Promise<Map<string, number>> {
@@ -171,9 +181,17 @@ async function main(): Promise<void> {
     bySymbol.set(f.order.symbol, (bySymbol.get(f.order.symbol) ?? 0) + (f.realizedPnlUsd ?? 0));
   }
 
+  // Benchmark: buy & hold equiponderado de la watchlist en la misma ventana
+  let bhReturn = 0;
+  for (const h of histories.values()) {
+    bhReturn += pct(h[WARMUP_H].price, h[len - 1].price) / histories.size;
+  }
+
   console.log("\n========== RESULTADO ==========");
   console.log(`Capital inicial : $${config.paperStartingUsd.toFixed(2)}`);
   console.log(`Capital final   : $${finalTotal.toFixed(2)} (${pct(config.paperStartingUsd, finalTotal).toFixed(2)}%)`);
+  console.log(`Buy & hold      : ${bhReturn.toFixed(2)}% (watchlist equiponderada, misma ventana)`);
+  console.log(`Alpha           : ${(pct(config.paperStartingUsd, finalTotal) - bhReturn).toFixed(2)} puntos`);
   console.log(`Max drawdown    : -${(maxDd * 100).toFixed(2)}%`);
   console.log(`Trades          : ${portfolio.history.length} (${closed.length} cierres, win rate ${closed.length ? ((wins / closed.length) * 100).toFixed(0) : "—"}%)`);
   console.log(`Bloqueos riesgo : ${blockedCount}`);
