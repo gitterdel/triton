@@ -27,7 +27,13 @@ export const config = {
     LTC: { id: 2, address: "0x4338665CBB7B2485A8855A139b75D5e34AB0DB94" },
     TWT: { id: 5964, address: "0x4B0F1812e5Df2A09796481Ff14017e6005508003" },
     FET: { id: 3773, address: "0x031b41e504677879370e9DBcF937283A8691Fa7f" },
-  } as Record<string, { id: number; address: string }>,
+    // BANQUILLO (verificados pero fuera por backtest — incluso con puerta
+    // highBeta empeoran el drawdown en bajista: -7.2% vs -4.8%). Reevaluar
+    // el 19-21 jun SOLO si el mercado está en risk-on (F&G>=35, avg7d>-3%):
+    //   ASTER: { id: 36341, address: "0x000Ae314E2A2172a039B26378814C252734f556A", highBeta: true },
+    //   ZEC: { id: 1437, address: "0x1ba42e5193dfa8b03d15dd1b86a3113bbbef8eeb", highBeta: true },
+    //   SAHARA: { id: 36671, address: "0xFDFfB411C4A70AA7C95D5C981a6Fb4Da867e1111", highBeta: true },
+  } as Record<string, { id: number; address: string; highBeta?: boolean }>,
 
   // Trade mínimo diario de la competición (1/día obligatorio en la semana live)
   complianceSymbol: "ETH",

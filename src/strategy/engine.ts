@@ -1,4 +1,5 @@
 import type { Decision, MarketContext, Portfolio, TokenSignal } from "../types.js";
+import { config } from "../config.js";
 
 // Estrategia: momentum ponderado por régimen de mercado (Fear & Greed).
 // - Momentum: combinación de cambios 1h/24h/7d, con más peso al corto plazo.
@@ -64,7 +65,14 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
   // Salud global del mercado: media del 7d de toda la watchlist
   const marketAvg7d = ctx.signals.reduce((sum, x) => sum + x.percentChange7d, 0) / (ctx.signals.length || 1);
 
+  // Risk-on global: mercado no cayendo + sentimiento fuera del miedo
+  const riskOn = marketAvg7d > -3 && ctx.fearGreedValue >= 35;
+
   return ctx.signals.map((s) => {
+    // Tokens de alta beta (trending volátiles): SOLO comprables en risk-on.
+    // En bajista, sus rebotes-trampa duplican el drawdown (validado).
+    const betaBlocked = config.watchlist[s.symbol]?.highBeta === true && !riskOn;
+
     let score = momentumScore(s);
     // Boost de atención: momentum positivo + trending en CMC = mayor
     // probabilidad de continuación (la atención amplifica los movimientos).
@@ -81,7 +89,7 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     // - no comprar cuchillos cayendo (7d peor que -15%)
     const confirmed = s.percentChange24h > 0 && s.percentChange7d > -15 && s.volumeChange24h > 0;
 
-    if (score >= buyThreshold && confirmed && !held.has(s.symbol)) {
+    if (score >= buyThreshold && confirmed && !betaBlocked && !held.has(s.symbol)) {
       const confidence = Math.min(0.95, 0.5 + (score - buyThreshold) / 10);
       return { symbol: s.symbol, action: "BUY" as const, confidence, reasons, signal: s, strategy: "momentum" as const };
     }
