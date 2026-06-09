@@ -7,6 +7,7 @@ import { paperExecutor } from "./execution/paper.js";
 import { twakExecutor } from "./execution/twak.js";
 import { writeTickState, type TickState } from "./state/telemetry.js";
 import { publishState } from "./state/publisher.js";
+import { ensureFailsafeStop, clearFailsafeStop, stopPriceFor } from "./execution/guardrails.js";
 
 const executor = config.executionMode === "live" ? twakExecutor : paperExecutor;
 
@@ -48,6 +49,17 @@ export async function tick(): Promise<void> {
       );
     } catch (err) {
       console.error(`  ❌ Falló ${order.side} ${order.symbol}:`, (err as Error).message);
+    }
+  }
+
+  // Failsafe de stops a nivel TWAK (solo live): cada posición lleva una
+  // limit order nativa que ejecuta el watcher de TWAK aunque el agente caiga.
+  if (config.executionMode === "live") {
+    for (const e of executed.filter((x) => x.side === "SELL")) {
+      await clearFailsafeStop(e.symbol);
+    }
+    for (const pos of portfolio.positions) {
+      await ensureFailsafeStop(pos.symbol, pos.qty, stopPriceFor(pos.avgEntryUsd, pos.peakUsd));
     }
   }
 
