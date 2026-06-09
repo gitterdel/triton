@@ -20,6 +20,7 @@ export interface Intel {
   macroEvents: { title: string; date: string }[];
   news: { title: string; url?: string }[];
   screener: ScreenerRow[];
+  botScan?: { updatedAt: string; results: Record<string, { ret: number; dd: number; trades: number; wr: number | null; bh: number }> } | null;
 }
 
 export interface ScreenerRow {
@@ -121,6 +122,9 @@ export async function refreshIntel(): Promise<Intel | null> {
         url: n.url ? String(n.url) : undefined,
       })),
       screener,
+      botScan: existsSync(join(process.cwd(), "data", "bot-scan.json"))
+        ? JSON.parse(readFileSync(join(process.cwd(), "data", "bot-scan.json"), "utf-8"))
+        : null,
     };
 
     mkdirSync(dirname(CACHE), { recursive: true });
