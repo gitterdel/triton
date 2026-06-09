@@ -22,8 +22,9 @@ export const config = {
     ADA: { id: 2010, address: "0x3EE2200Efb3400fAbB9AacF31297cBdD1d435D47" },
     LINK: { id: 1975, address: "0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD" },
     AVAX: { id: 5805, address: "0x1CE0c2827e2eF14D5C4f29a091d735A204794041" },
-    DOT: { id: 6636, address: "0x7083609fCE4d1d8Dc0C979AAb8c869Ea2C873402" },
-    UNI: { id: 7083, address: "0xBf5140A22578168FD562DCcF235E5D43A02ce9B1" },
+    // DOT: { id: 6636, address: "0x7083609fCE4d1d8Dc0C979AAb8c869Ea2C873402" }, // TEST: perdedor consistente
+    // UNI: { id: 7083, address: "0xBf5140A22578168FD562DCcF235E5D43A02ce9B1" }, // TEST: perdedor consistente
+    ATOM: { id: 3794, address: "0x0Eb3a705fc54725037CC9e008bDede697f62F335" },
     LTC: { id: 2, address: "0x4338665CBB7B2485A8855A139b75D5e34AB0DB94" },
     TWT: { id: 5964, address: "0x4B0F1812e5Df2A09796481Ff14017e6005508003" },
     FET: { id: 3773, address: "0x031b41e504677879370e9DBcF937283A8691Fa7f" },

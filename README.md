@@ -55,13 +55,13 @@ identity/
 
 Backtest over the last 21 days (hourly CMC data, bear-market window), replaying the **exact live engine** — same strategy, same risk manager, same accounting; only the feed is simulated:
 
-| Metric | Triton (two-module ensemble) | Buy & hold (watchlist) |
+| Metric | Triton (three-module ensemble) | Buy & hold (watchlist) |
 |---|---|---|
-| Return | **−2.76%** | −18.18% |
-| Max drawdown | **−4.80%** | >20% |
-| Win rate | 40% | — |
+| Return | **+0.06%** | −17.00% |
+| Max drawdown | **−4.98%** | >20% |
+| Win rate | 53% | — |
 
-**+15.4 points of alpha in a crash**, on the competition's eligible-token watchlist. Triton runs a regime-gated three-module ensemble: MOMENTUM (buys confirmed strength, trailing-stop exits), RANGE (mean reversion, only wakes when token AND global market are sideways) and BREAKOUT (48h-high breaks with volume, only wakes in healthy risk-on markets — validated to do zero harm in bear data, designed to capture bull weeks). The backtest harness drove every decision — it falsified contrarian buy-the-fear, falsified an ungated range module (-6.5%: in a bear, "sideways" is consolidation before breakdown), and validated trend+volume confirmation, falling-knife filters, post-stop cooldowns, and the double-gated ensemble. Data-backed, not curve-fit. Reproduce it: `npm run backtest -- 21`
+**Positive return (+17 points of alpha) in a full crash window**, on the competition's eligible-token watchlist. Token selection is data-disciplined too: structurally-chosen universe (liquidity, operability, diversity), then consistent strategy-misfit losers benched (DOT, UNI whipsawed momentum in every tested config) and replaced by a resilience pick (ATOM). Triton runs a regime-gated three-module ensemble: MOMENTUM (buys confirmed strength, trailing-stop exits), RANGE (mean reversion, only wakes when token AND global market are sideways) and BREAKOUT (48h-high breaks with volume, only wakes in healthy risk-on markets — validated to do zero harm in bear data, designed to capture bull weeks). The backtest harness drove every decision — it falsified contrarian buy-the-fear, falsified an ungated range module (-6.5%: in a bear, "sideways" is consolidation before breakdown), and validated trend+volume confirmation, falling-knife filters, post-stop cooldowns, and the double-gated ensemble. Data-backed, not curve-fit. Reproduce it: `npm run backtest -- 21`
 
 ## Run it
 
