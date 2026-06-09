@@ -2,6 +2,8 @@ import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync } fr
 import { join, dirname } from "node:path";
 import type { Decision, MarketContext, Portfolio } from "../types.js";
 import type { RiskResult } from "../risk/manager.js";
+import { RISK_LIMITS, config } from "../config.js";
+import { STRATEGY_PARAMS } from "../strategy/engine.js";
 
 const STATE_FILE = join(process.cwd(), "data", "state.json");
 const EQUITY_FILE = join(process.cwd(), "data", "equity.json");
@@ -44,6 +46,14 @@ export interface TickState {
     maxDrawdownPct: number;
     winRate: number | null; // null hasta que haya trades cerrados
     closedTrades: number;
+    avgWinUsd: number | null;
+    avgLossUsd: number | null;
+    profitFactor: number | null; // ganancias brutas / pérdidas brutas
+  };
+  params: {
+    strategy: typeof STRATEGY_PARAMS;
+    risk: typeof RISK_LIMITS;
+    ops: { tickSeconds: number; fastCheckSeconds: number; watchlist: string[]; complianceTradeUsd: number };
   };
 }
 
@@ -86,7 +96,11 @@ export function writeTickState(
   if (equity.length > MAX_EQUITY_POINTS) equity = equity.slice(-MAX_EQUITY_POINTS);
 
   const closed = portfolio.history.filter((f) => f.order.side === "SELL" && f.realizedPnlUsd !== undefined);
-  const wins = closed.filter((f) => (f.realizedPnlUsd ?? 0) > 0).length;
+  const winFills = closed.filter((f) => (f.realizedPnlUsd ?? 0) > 0);
+  const lossFills = closed.filter((f) => (f.realizedPnlUsd ?? 0) <= 0);
+  const wins = winFills.length;
+  const grossWin = winFills.reduce((s, f) => s + (f.realizedPnlUsd ?? 0), 0);
+  const grossLoss = Math.abs(lossFills.reduce((s, f) => s + (f.realizedPnlUsd ?? 0), 0));
 
   const state: TickState = {
     lastTick: new Date().toISOString(),
@@ -118,6 +132,19 @@ export function writeTickState(
       maxDrawdownPct: maxDrawdownPct(equity),
       winRate: closed.length ? (wins / closed.length) * 100 : null,
       closedTrades: closed.length,
+      avgWinUsd: wins ? grossWin / wins : null,
+      avgLossUsd: lossFills.length ? -grossLoss / lossFills.length : null,
+      profitFactor: grossLoss > 0 ? grossWin / grossLoss : null,
+    },
+    params: {
+      strategy: STRATEGY_PARAMS,
+      risk: RISK_LIMITS,
+      ops: {
+        tickSeconds: config.tickIntervalSeconds,
+        fastCheckSeconds: config.fastCheckSeconds,
+        watchlist: Object.keys(config.watchlist),
+        complianceTradeUsd: config.complianceTradeUsd,
+      },
     },
   };
 

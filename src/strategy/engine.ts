@@ -6,6 +6,19 @@ import type { Decision, MarketContext, Portfolio, TokenSignal } from "../types.j
 // - F&G actúa de regulador contrario: con Extreme Greed exigimos más señal
 //   para comprar; con Extreme Fear, más señal para vender (evitar pánico).
 
+// Parámetros de la estrategia, exportados para telemetría/dashboard.
+export const STRATEGY_PARAMS = {
+  momentumWeights: { h1: 0.5, h24: 0.35, d7: 0.15 },
+  volumeBoost: { threshold: 20, up: 1.2, down: 0.8 },
+  trendingBoost: 1.2,
+  regimes: {
+    greed: { fg: ">=75", buyThreshold: 3, sellThreshold: -1.5 },
+    neutral: { fg: "26-74", buyThreshold: 1.5, sellThreshold: -2 },
+    fear: { fg: "<=25", buyThreshold: 3, sellThreshold: -4 },
+  },
+  buyConfirmation: "24h > 0 AND 7d > -15% AND volume24h rising",
+};
+
 function momentumScore(s: TokenSignal): number {
   const m = s.percentChange1h * 0.5 + s.percentChange24h * 0.35 + s.percentChange7d * 0.15;
   const volBoost = s.volumeChange24h > 20 ? 1.2 : s.volumeChange24h < -20 ? 0.8 : 1;
