@@ -55,6 +55,7 @@ export interface TickState {
     risk: typeof RISK_LIMITS;
     ops: { tickSeconds: number; fastCheckSeconds: number; watchlist: string[]; complianceTradeUsd: number };
   };
+  intel?: import("../signals/intel.js").Intel | null;
 }
 
 function maxDrawdownPct(equity: EquityPoint[]): number {
@@ -74,6 +75,7 @@ export function writeTickState(
   executed: TickState["ordersExecuted"],
   portfolio: Portfolio,
   executionMode: string,
+  intel?: import("../signals/intel.js").Intel | null,
 ): void {
   const priceOf = (sym: string) => ctx.signals.find((s) => s.symbol === sym)?.priceUsd ?? 0;
   const positions = portfolio.positions.map((p) => {
@@ -146,6 +148,7 @@ export function writeTickState(
         complianceTradeUsd: config.complianceTradeUsd,
       },
     },
+    intel: intel ?? null,
   };
 
   mkdirSync(dirname(STATE_FILE), { recursive: true });

@@ -79,7 +79,9 @@ export async function tick(): Promise<void> {
   }
 
   savePortfolio(portfolio);
-  writeTickState(ctx, decisions, { orders, blocked, killSwitchActive }, executed, portfolio, executor.name);
+  const { refreshIntel } = await import("./signals/intel.js");
+  const intel = await refreshIntel();
+  writeTickState(ctx, decisions, { orders, blocked, killSwitchActive }, executed, portfolio, executor.name, intel);
   await publishState();
 
   const posValue = portfolio.positions.reduce((sum, p) => {
