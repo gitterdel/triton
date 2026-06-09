@@ -8,6 +8,9 @@ async function cmcGet<T>(path: string, params: Record<string, string> = {}): Pro
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url, {
     headers: { "X-CMC_PRO_API_KEY": config.cmcApiKey, Accept: "application/json" },
+    // Sin timeout, una red caída (PC durmiendo, wifi) deja el loop colgado
+    // PARA SIEMPRE en un await. Con timeout, falla y el loop reintenta.
+    signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) {
     const body = await res.text();
