@@ -125,6 +125,21 @@ export async function refreshIntel(): Promise<Intel | null> {
 
     mkdirSync(dirname(CACHE), { recursive: true });
     writeFileSync(CACHE, JSON.stringify(intel, null, 2));
+
+    // Registro horario de los top movers elegibles (24h): evidencia para
+    // decidir el 19 jun si se activa el "satélite" de alta beta — ¿los pumps
+    // del universo elegible duran días (entrables) o mueren en horas?
+    if (intel.screener.length) {
+      const movers = [...intel.screener]
+        .sort((a, b) => b.p24h - a.p24h)
+        .slice(0, 5)
+        .map((r) => `${r.sym}:${r.p24h.toFixed(1)}%/24h,${r.p7d.toFixed(1)}%/7d,vol$${(r.vol / 1e6).toFixed(0)}M`);
+      const { appendFileSync } = await import("node:fs");
+      appendFileSync(
+        join(process.cwd(), "data", "movers-log.jsonl"),
+        JSON.stringify({ t: intel.updatedAt, top: movers }) + "\n",
+      );
+    }
     return intel;
   } catch (err) {
     console.error("  ⚠️ intel MCP falló (no crítico):", (err as Error).message);
