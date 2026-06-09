@@ -82,6 +82,11 @@ export const HTML = /* html */ `<!DOCTYPE html>
     <tbody id="decisions"></tbody></table>
   </div>
   <div class="panel wide">
+    <h2>Risk Manager — Blocked Actions</h2>
+    <table><thead><tr><th>Token</th><th>Intent</th><th>Blocked Because</th></tr></thead>
+    <tbody id="blocked"><tr><td colspan="3" class="dim">Nothing blocked this tick</td></tr></tbody></table>
+  </div>
+  <div class="panel wide">
     <h2>Trade History</h2>
     <table><thead><tr><th>Time</th><th>Side</th><th>Token</th><th>Amount</th><th>Price</th><th>Reason</th><th>Tx</th></tr></thead>
     <tbody id="history"><tr><td colspan="7" class="dim">No trades yet</td></tr></tbody></table>
@@ -132,6 +137,10 @@ async function refresh() {
       <td class="\${cls(d.pct1h)}">\${pct(d.pct1h)}</td>
       <td class="\${cls(d.pct24h)}">\${pct(d.pct24h)}</td>
       <td class="\${cls(d.pct7d)}">\${pct(d.pct7d)}</td></tr>\`).join("");
+
+    $("blocked").innerHTML = (state.blocked && state.blocked.length)
+      ? state.blocked.map((b) => \`<tr><td>\${b.symbol}</td><td class="act-\${b.action}">\${b.action}</td><td class="reason">\${b.why}</td></tr>\`).join("")
+      : '<tr><td colspan="3" class="dim">Nothing blocked this tick</td></tr>';
 
     $("history").innerHTML = history.length
       ? history.map((f) => \`<tr>

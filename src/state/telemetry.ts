@@ -1,10 +1,11 @@
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import type { Decision, MarketContext, Portfolio } from "../types.js";
 import type { RiskResult } from "../risk/manager.js";
 
 const STATE_FILE = join(process.cwd(), "data", "state.json");
 const EQUITY_FILE = join(process.cwd(), "data", "equity.json");
+const SIGNALS_LOG = join(process.cwd(), "data", "signals-log.jsonl");
 const MAX_EQUITY_POINTS = 5000;
 
 export interface EquityPoint {
@@ -93,6 +94,27 @@ export function writeTickState(
 
   mkdirSync(dirname(STATE_FILE), { recursive: true });
   writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+
+  // Log histórico de señales (una línea por tick) para análisis y tuning
+  // posterior de la estrategia: es nuestro dataset propio de backtesting.
+  appendFileSync(
+    SIGNALS_LOG,
+    JSON.stringify({
+      t: state.lastTick,
+      fg: ctx.fearGreedValue,
+      signals: ctx.signals.map((s) => ({
+        sym: s.symbol,
+        px: s.priceUsd,
+        p1h: s.percentChange1h,
+        p24h: s.percentChange24h,
+        p7d: s.percentChange7d,
+        vol: s.volume24h,
+        volChg: s.volumeChange24h,
+      })),
+      actions: decisions.filter((d) => d.action !== "HOLD").map((d) => `${d.action}:${d.symbol}`),
+      executed: executed.map((e) => `${e.side}:${e.symbol}:$${e.amountUsd.toFixed(0)}`),
+    }) + "\n",
+  );
 
   // Curva de equity
   let equity: EquityPoint[] = [];
