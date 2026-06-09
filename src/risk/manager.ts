@@ -36,6 +36,24 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
     const peakGain = (pos.peakUsd - pos.avgEntryUsd) / pos.avgEntryUsd;
     const fromPeak = (sig.priceUsd - pos.peakUsd) / pos.peakUsd;
 
+    // Posiciones RANGE: salidas simétricas cortas (target/stop ±3%), sin
+    // trailing — la reversión a la media toma el beneficio y se va.
+    if (pos.strategy === "range") {
+      if (change >= 0.03 || change <= -0.03) {
+        orders.push({
+          symbol: pos.symbol,
+          side: "SELL",
+          amountUsd: pos.qty * sig.priceUsd,
+          priceUsd: sig.priceUsd,
+          reason: change >= 0.03
+            ? `RANGE TARGET: +${(change * 100).toFixed(2)}% — beneficio tomado`
+            : `RANGE STOP: ${(change * 100).toFixed(2)}% — el rango no aguantó`,
+          strategy: "range",
+        });
+      }
+      continue;
+    }
+
     if (change <= -RISK_LIMITS.stopLossPct) {
       orders.push({
         symbol: pos.symbol,
@@ -90,7 +108,9 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
         continue;
       }
       const maxByPct = totalValue * RISK_LIMITS.maxPositionPctOfPortfolio;
-      const amountUsd = Math.min(RISK_LIMITS.maxTradeUsd, maxByPct, portfolio.cashUsd * 0.95);
+      // Las entradas RANGE van a media talla: son apuestas de menor convicción
+      const sizeFactor = d.strategy === "range" ? 0.5 : 1;
+      const amountUsd = Math.min(RISK_LIMITS.maxTradeUsd * sizeFactor, maxByPct * sizeFactor, portfolio.cashUsd * 0.95);
       if (amountUsd < RISK_LIMITS.minTradeUsd) {
         blocked.push({ decision: d, why: `importe ${amountUsd.toFixed(2)} USD < mínimo ${RISK_LIMITS.minTradeUsd}` });
         continue;
@@ -101,6 +121,7 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
         amountUsd,
         priceUsd: d.signal.priceUsd,
         reason: d.reasons[0],
+        strategy: d.strategy,
       });
     } else {
       const pos = portfolio.positions.find((p) => p.symbol === d.symbol);

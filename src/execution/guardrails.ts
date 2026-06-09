@@ -79,7 +79,9 @@ export async function clearFailsafeStop(symbol: string): Promise<void> {
   }
 }
 
-export function stopPriceFor(avgEntryUsd: number, peakUsd: number | undefined): number {
+export function stopPriceFor(avgEntryUsd: number, peakUsd: number | undefined, strategy?: string): number {
+  // Posiciones range: stop fijo simétrico al target (sin trailing)
+  if (strategy === "range") return avgEntryUsd * 0.97;
   // El failsafe replica la lógica del agente: el peor de los dos niveles
   // (stop fijo desde entrada, o trailing desde pico si está armado).
   const hardStop = avgEntryUsd * (1 - RISK_LIMITS.stopLossPct);

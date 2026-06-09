@@ -59,7 +59,7 @@ export async function tick(): Promise<void> {
       await clearFailsafeStop(e.symbol);
     }
     for (const pos of portfolio.positions) {
-      await ensureFailsafeStop(pos.symbol, pos.qty, stopPriceFor(pos.avgEntryUsd, pos.peakUsd));
+      await ensureFailsafeStop(pos.symbol, pos.qty, stopPriceFor(pos.avgEntryUsd, pos.peakUsd, pos.strategy));
     }
   }
 

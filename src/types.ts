@@ -19,6 +19,7 @@ export interface MarketContext {
 }
 
 export type Action = "BUY" | "SELL" | "HOLD";
+export type StrategyKind = "momentum" | "range";
 
 export interface Decision {
   symbol: string;
@@ -26,6 +27,7 @@ export interface Decision {
   confidence: number; // 0-1
   reasons: string[];
   signal: TokenSignal;
+  strategy?: StrategyKind;
 }
 
 export interface Order {
@@ -34,6 +36,7 @@ export interface Order {
   amountUsd: number;
   priceUsd: number;
   reason: string;
+  strategy?: StrategyKind;
 }
 
 export interface Fill {
@@ -50,6 +53,7 @@ export interface Position {
   avgEntryUsd: number;
   openedAt: string;
   peakUsd?: number; // máximo visto desde la entrada (para el trailing stop)
+  strategy?: StrategyKind; // determina el perfil de salida (momentum: trailing; range: target fijo)
 }
 
 export interface Portfolio {

@@ -47,6 +47,7 @@ export function applyFill(p: Portfolio, fill: Fill): void {
         avgEntryUsd: order.priceUsd,
         openedAt: fill.executedAt,
         peakUsd: order.priceUsd,
+        strategy: order.strategy ?? "momentum",
       });
     }
     p.cashUsd -= order.amountUsd;

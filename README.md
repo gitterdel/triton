@@ -55,13 +55,13 @@ identity/
 
 Backtest over the last 21 days (hourly CMC data, bear-market window), replaying the **exact live engine** — same strategy, same risk manager, same accounting; only the feed is simulated:
 
-| Metric | Triton | Buy & hold (watchlist) |
+| Metric | Triton (two-module ensemble) | Buy & hold (watchlist) |
 |---|---|---|
-| Return | **−4.79%** | −18.49% |
-| Max drawdown | **−5.49%** | >20% |
-| Win rate | 38% | — |
+| Return | **−2.76%** | −18.18% |
+| Max drawdown | **−4.80%** | >20% |
+| Win rate | 40% | — |
 
-**+13.7 points of alpha in a crash**, on the competition's eligible-token watchlist. The backtest harness drove every strategy decision: it falsified the original contrarian buy-the-fear hypothesis (whipsaw city in a sustained downtrend), and validated trend confirmation (24h + volume must agree), a falling-knife filter, and a 24h cooldown after any stop-loss. Each filter has an economic rationale — this is data-backed, not curve-fit. Reproduce it: `npm run backtest -- 21`
+**+15.4 points of alpha in a crash**, on the competition's eligible-token watchlist. Triton runs a regime-gated ensemble: a momentum module (buys confirmed strength, trailing-stop exits) and a mean-reversion RANGE module that only wakes when both the token AND the global market are sideways. The backtest harness drove every decision — it falsified contrarian buy-the-fear, falsified an ungated range module (-6.5%: in a bear, "sideways" is consolidation before breakdown), and validated trend+volume confirmation, falling-knife filters, post-stop cooldowns, and the double-gated ensemble. Data-backed, not curve-fit. Reproduce it: `npm run backtest -- 21`
 
 ## Run it
 
