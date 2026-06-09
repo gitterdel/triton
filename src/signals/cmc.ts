@@ -43,7 +43,7 @@ interface FearGreedResponse {
 }
 
 export async function fetchQuotes(): Promise<TokenSignal[]> {
-  const ids = Object.values(config.watchlist).join(",");
+  const ids = Object.values(config.watchlist).map((t) => t.id).join(",");
   const res = await cmcGet<QuotesResponse>("/v2/cryptocurrency/quotes/latest", { id: ids });
   return Object.values(res.data).map((d) => ({
     symbol: d.symbol,

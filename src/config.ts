@@ -11,22 +11,23 @@ export const config = {
   fastCheckSeconds: Number(process.env.FAST_CHECK_SECONDS ?? 60),
 
   // Tokens de la lista ELEGIBLE de la competición (149 BEP-20 en CMC) con
-  // buena liquidez en BSC. symbol -> CMC id. OJO: BNB, BTCB y SOL NO son
-  // elegibles — trades fuera de la lista no puntúan.
+  // buena liquidez en BSC. OJO: BNB, BTCB y SOL NO son elegibles.
+  // address: contrato BEP-20 canónico (Binance-pegged) — twak NO resuelve
+  // varios de estos símbolos en BSC, los swaps van SIEMPRE por dirección.
   watchlist: {
-    ETH: 1027,
-    CAKE: 7186,
-    XRP: 52,
-    DOGE: 74,
-    ADA: 2010,
-    LINK: 1975,
-    AVAX: 5805,
-    DOT: 6636,
-    UNI: 7083,
-    LTC: 2,
-    TWT: 5964,
-    FET: 3773,
-  } as Record<string, number>,
+    ETH: { id: 1027, address: "0x2170Ed0880ac9A755fd29B2688956BD959F933F8" },
+    CAKE: { id: 7186, address: "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82" },
+    XRP: { id: 52, address: "0x1D2F0da169ceB9fC7B3144628dB156f3F6c60dBE" },
+    DOGE: { id: 74, address: "0xbA2aE424d960c26247Dd6c32edC70B295c744C43" },
+    ADA: { id: 2010, address: "0x3EE2200Efb3400fAbB9AacF31297cBdD1d435D47" },
+    LINK: { id: 1975, address: "0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD" },
+    AVAX: { id: 5805, address: "0x1CE0c2827e2eF14D5C4f29a091d735A204794041" },
+    DOT: { id: 6636, address: "0x7083609fCE4d1d8Dc0C979AAb8c869Ea2C873402" },
+    UNI: { id: 7083, address: "0xBf5140A22578168FD562DCcF235E5D43A02ce9B1" },
+    LTC: { id: 2, address: "0x4338665CBB7B2485A8855A139b75D5e34AB0DB94" },
+    TWT: { id: 5964, address: "0x4B0F1812e5Df2A09796481Ff14017e6005508003" },
+    FET: { id: 3773, address: "0x031b41e504677879370e9DBcF937283A8691Fa7f" },
+  } as Record<string, { id: number; address: string }>,
 
   // Trade mínimo diario de la competición (1/día obligatorio en la semana live)
   complianceSymbol: "ETH",

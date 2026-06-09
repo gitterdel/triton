@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { RISK_LIMITS } from "../config.js";
+import { RISK_LIMITS, config } from "../config.js";
 
 const exec = promisify(execFile);
 
@@ -46,14 +46,18 @@ async function listAutomations(): Promise<Automation[]> {
 // del token a USDT si el precio cae por debajo de stopPriceUsd.
 export async function ensureFailsafeStop(symbol: string, qty: number, stopPriceUsd: number): Promise<void> {
   try {
-    const existing = (await listAutomations()).filter((a) => a.from === symbol && a.to === "USDT");
+    const address = config.watchlist[symbol]?.address ?? symbol;
+    const matches = (a: Automation) =>
+      (a.from?.toLowerCase() === symbol.toLowerCase() || a.from?.toLowerCase() === address.toLowerCase()) &&
+      (a.to ?? "USDT").toUpperCase().includes("USDT");
+    const existing = (await listAutomations()).filter(matches);
     // Si ya hay un stop al mismo nivel (±0.5%), no tocar
     if (existing.some((a) => a.price && Math.abs(a.price - stopPriceUsd) / stopPriceUsd < 0.005)) return;
 
     for (const a of existing) await twak(["automate", "delete", a.id, "--json"]).catch(() => {});
     await twak([
       "automate", "add",
-      "--from", symbol,
+      "--from", address,
       "--to", "USDT",
       "--chain", "bsc",
       "--amount", qty.toFixed(8),
@@ -72,7 +76,10 @@ export async function ensureFailsafeStop(symbol: string, qty: number, stopPriceU
 // Retira el failsafe cuando la posición se cierra por la vía normal.
 export async function clearFailsafeStop(symbol: string): Promise<void> {
   try {
-    const existing = (await listAutomations()).filter((a) => a.from === symbol && a.to === "USDT");
+    const address = config.watchlist[symbol]?.address ?? symbol;
+    const existing = (await listAutomations()).filter(
+      (a) => a.from?.toLowerCase() === symbol.toLowerCase() || a.from?.toLowerCase() === address.toLowerCase(),
+    );
     for (const a of existing) await twak(["automate", "delete", a.id, "--json"]).catch(() => {});
   } catch {
     /* redundancia: no crítico */

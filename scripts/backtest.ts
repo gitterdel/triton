@@ -1,11 +1,11 @@
-/**
- * Backtest de la estrategia de Triton con datos históricos horarios de CMC.
+﻿/**
+ * Backtest de la estrategia de Triton con datos histÃ³ricos horarios de CMC.
  *
- * Requiere un plan de CMC con históricos (Hobbyist/Startup+).
- * Uso: npm run backtest [-- días]   (por defecto 30)
+ * Requiere un plan de CMC con histÃ³ricos (Hobbyist/Startup+).
+ * Uso: npm run backtest [-- dÃ­as]   (por defecto 30)
  *
  * Reutiliza EXACTAMENTE el mismo motor que el agente en vivo:
- * decide() + applyRisk() + applyFill(). Lo único simulado es el feed.
+ * decide() + applyRisk() + applyFill(). Lo Ãºnico simulado es el feed.
  */
 import "dotenv/config";
 import { config, RISK_LIMITS } from "../src/config.js";
@@ -34,8 +34,8 @@ interface HistPoint {
 
 async function fetchHistory(cmcId: number): Promise<HistPoint[]> {
   const count = DAYS * 24 + WARMUP_H;
-  // Caché en disco (1h de vigencia) para iterar en los parámetros sin
-  // quemar créditos de API en cada ejecución.
+  // CachÃ© en disco (1h de vigencia) para iterar en los parÃ¡metros sin
+  // quemar crÃ©ditos de API en cada ejecuciÃ³n.
   const { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } = await import("node:fs");
   const cacheFile = `data/hist-cache-${cmcId}-${count}.json`;
   if (existsSync(cacheFile) && Date.now() - statSync(cacheFile).mtimeMs < 3600_000) {
@@ -71,7 +71,7 @@ async function fetchFearGreedHistory(): Promise<Map<string, number>> {
       map.set(day, d.value);
     }
   } catch (err) {
-    console.warn("F&G histórico no disponible (se usa 50/Neutral):", (err as Error).message);
+    console.warn("F&G histÃ³rico no disponible (se usa 50/Neutral):", (err as Error).message);
   }
   return map;
 }
@@ -81,11 +81,11 @@ function pct(from: number, to: number): number {
 }
 
 async function main(): Promise<void> {
-  console.log(`Backtest: ${DAYS} días, watchlist=${Object.keys(config.watchlist).join(",")}`);
+  console.log(`Backtest: ${DAYS} dÃ­as, watchlist=${Object.keys(config.watchlist).join(",")}`);
 
   const histories = new Map<string, HistPoint[]>();
-  for (const [sym, id] of Object.entries(config.watchlist)) {
-    histories.set(sym, await fetchHistory(id));
+  for (const [sym, t] of Object.entries(config.watchlist)) {
+    histories.set(sym, await fetchHistory(t.id));
     console.log(`  ${sym}: ${histories.get(sym)!.length} puntos`);
   }
   const fgByDay = await fetchFearGreedHistory();
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
       ts = p.t;
       signals.push({
         symbol: sym,
-        cmcId: config.watchlist[sym],
+        cmcId: config.watchlist[sym].id,
         priceUsd: p.price,
         percentChange1h: pct(h[i - 1].price, p.price),
         percentChange24h: pct(h[i - 24].price, p.price),
@@ -154,10 +154,10 @@ async function main(): Promise<void> {
     maxDd = Math.max(maxDd, (peak - total) / peak);
   }
 
-  // Liquidación final a último precio para PnL total comparable
+  // LiquidaciÃ³n final a Ãºltimo precio para PnL total comparable
   const lastSignals: TokenSignal[] = [...histories.entries()].map(([sym, h]) => ({
     symbol: sym,
-    cmcId: config.watchlist[sym],
+    cmcId: config.watchlist[sym].id,
     priceUsd: h[len - 1].price,
     percentChange1h: 0,
     percentChange24h: 0,
@@ -193,13 +193,13 @@ async function main(): Promise<void> {
   console.log(`Buy & hold      : ${bhReturn.toFixed(2)}% (watchlist equiponderada, misma ventana)`);
   console.log(`Alpha           : ${(pct(config.paperStartingUsd, finalTotal) - bhReturn).toFixed(2)} puntos`);
   console.log(`Max drawdown    : -${(maxDd * 100).toFixed(2)}%`);
-  console.log(`Trades          : ${portfolio.history.length} (${closed.length} cierres, win rate ${closed.length ? ((wins / closed.length) * 100).toFixed(0) : "—"}%)`);
+  console.log(`Trades          : ${portfolio.history.length} (${closed.length} cierres, win rate ${closed.length ? ((wins / closed.length) * 100).toFixed(0) : "â€”"}%)`);
   console.log(`Bloqueos riesgo : ${blockedCount}`);
-  console.log("PnL por símbolo :");
+  console.log("PnL por sÃ­mbolo :");
   for (const [sym, pnl] of [...bySymbol.entries()].sort((a, b) => b[1] - a[1])) {
     console.log(`  ${sym.padEnd(5)} $${pnl.toFixed(2)}`);
   }
-  console.log(`\nLímites: SL ${RISK_LIMITS.stopLossPct * 100}% | trail ${RISK_LIMITS.trailingStopPct * 100}% (act. +${RISK_LIMITS.trailingActivationPct * 100}%) | cap diario ${RISK_LIMITS.dailyLossCapPct * 100}%`);
+  console.log(`\nLÃ­mites: SL ${RISK_LIMITS.stopLossPct * 100}% | trail ${RISK_LIMITS.trailingStopPct * 100}% (act. +${RISK_LIMITS.trailingActivationPct * 100}%) | cap diario ${RISK_LIMITS.dailyLossCapPct * 100}%`);
 }
 
 main().catch((err) => {

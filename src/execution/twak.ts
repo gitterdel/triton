@@ -32,11 +32,19 @@ function parseJson(stdout: string): Record<string, unknown> {
   return JSON.parse(stdout.slice(start));
 }
 
-function swapArgs(order: Order, quoteOnly: boolean): string[] {
+async function tokenAddress(symbol: string): Promise<string> {
+  const { config } = await import("../config.js");
+  const entry = config.watchlist[symbol];
+  if (!entry) throw new Error(`${symbol} no está en el allowlist`);
+  // twak no resuelve varios símbolos en BSC: siempre por contrato BEP-20
+  return entry.address;
+}
+
+function swapArgs(order: Order, token: string, quoteOnly: boolean): string[] {
   const args =
     order.side === "BUY"
-      ? ["swap", "USDT", order.symbol, "--usd", order.amountUsd.toFixed(2)]
-      : ["swap", (order.amountUsd / order.priceUsd).toFixed(8), order.symbol, "USDT"];
+      ? ["swap", "USDT", token, "--usd", order.amountUsd.toFixed(2)]
+      : ["swap", (order.amountUsd / order.priceUsd).toFixed(8), token, "USDT"];
   args.push("--chain", "bsc", "--slippage", String(SLIPPAGE_PCT), "--json");
   if (quoteOnly) args.push("--quote-only");
   return args;
@@ -52,15 +60,17 @@ export const twakExecutor: Executor = {
       throw new Error(`${order.symbol} no está en el allowlist de tokens elegibles — orden rechazada`);
     }
 
+    const token = await tokenAddress(order.symbol);
+
     // 1. Quote y validación de impacto de precio
-    const quote = parseJson(await twak(swapArgs(order, true)));
+    const quote = parseJson(await twak(swapArgs(order, token, true)));
     const impact = Math.abs(Number(quote.priceImpact ?? 0));
     if (impact > MAX_PRICE_IMPACT_PCT) {
       throw new Error(`Impacto de precio ${impact}% > límite ${MAX_PRICE_IMPACT_PCT}% — swap abortado`);
     }
 
     // 2. Ejecución real
-    const result = parseJson(await twak(swapArgs(order, false)));
+    const result = parseJson(await twak(swapArgs(order, token, false)));
     const txHash = (result.txHash ?? result.hash ?? result.transactionHash) as string | undefined;
 
     return {
