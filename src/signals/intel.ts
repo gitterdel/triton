@@ -19,6 +19,54 @@ export interface Intel {
   narratives: { rank: number; name: string; change24h: string; keywords: string[] }[];
   macroEvents: { title: string; date: string }[];
   news: { title: string; url?: string }[];
+  screener: ScreenerRow[];
+}
+
+export interface ScreenerRow {
+  sym: string;
+  name: string;
+  px: number;
+  mcap: number;
+  p1h: number;
+  p24h: number;
+  p7d: number;
+  vol: number;
+}
+
+// Los 149 tokens elegibles de la competición (de las reglas oficiales)
+const ELIGIBLE = new Set(
+  `ETH USDT USDC XRP TRX DOGE ZEC ADA LINK BCH DAI TON USD1 USDE M LTC AVAX SHIB XAUT WLFI H DOT UNI ASTER DEXE USDD ETC AAVE ATOM U STABLE FIL INJ NIGHT FET TUSD BONK PENGU CAKE SIREN LUNC ZRO KITE FDUSD BEAT PIEVERSE BTT NFT EDGE FLOKI LDO B FF PENDLE NEX STG AXS TWT HOME RAY COMP GWEI XCN GENIUS XPL BAT SKYAI APE IP SFP TAG NXPC AB SAHARA 1INCH CHEEMS BANANAS31 RIVER MYX RAVE SNX FORM LAB HTX USDF CTM BDX SLX UB DUCKY FRAX BILL WFI KOGE ALE FRXUSD GOMINING VCNT GUA DUSD SMILEK 0G BEAM MY SOON REAL Q AIOZ ZIG YFI TAC LISUSD CYS ZAMA TRIA HUMA PLUME ZIL XPR ZETA BABYDOGE NILA ROSE VELO UAI BRETT OPEN BSB TOSHI BAS ACH AXL LUR ELF KAVA APR IRYS EURI XUSD BARD DUSK SUSHI PEAQ COAI BDCA XAUM`.split(/\s+/),
+);
+
+async function fetchScreener(): Promise<ScreenerRow[]> {
+  const url = new URL("https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest");
+  url.searchParams.set("limit", "3000");
+  url.searchParams.set("convert", "USD");
+  const res = await fetch(url, {
+    headers: { "X-CMC_PRO_API_KEY": config.cmcApiKey },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) throw new Error(`screener ${res.status}`);
+  const data = (await res.json()) as { data: any[] };
+  const seen = new Set<string>();
+  const rows: ScreenerRow[] = [];
+  for (const c of data.data) {
+    const sym = String(c.symbol).toUpperCase();
+    if (!ELIGIBLE.has(sym) || seen.has(sym)) continue;
+    seen.add(sym);
+    const q = c.quote?.USD ?? {};
+    rows.push({
+      sym,
+      name: String(c.name).slice(0, 24),
+      px: q.price ?? 0,
+      mcap: q.market_cap ?? 0,
+      p1h: q.percent_change_1h ?? 0,
+      p24h: q.percent_change_24h ?? 0,
+      p7d: q.percent_change_7d ?? 0,
+      vol: q.volume_24h ?? 0,
+    });
+  }
+  return rows;
 }
 
 async function mcpCall(name: string, args: Record<string, unknown>): Promise<any> {
@@ -49,10 +97,11 @@ export async function refreshIntel(): Promise<Intel | null> {
       if (Date.now() - Date.parse(cached.updatedAt) < TTL_MS) return cached;
     }
 
-    const [narrativesRaw, macroRaw, newsRaw] = await Promise.all([
+    const [narrativesRaw, macroRaw, newsRaw, screener] = await Promise.all([
       mcpCall("trending_crypto_narratives", { limit: 6 }).catch(() => null),
       mcpCall("get_upcoming_macro_events", {}).catch(() => null),
       mcpCall("get_crypto_latest_news", { symbol: "ETH", limit: 4 }).catch(() => null),
+      fetchScreener().catch(() => [] as ScreenerRow[]),
     ]);
 
     const intel: Intel = {
@@ -71,6 +120,7 @@ export async function refreshIntel(): Promise<Intel | null> {
         title: String(n.title ?? ""),
         url: n.url ? String(n.url) : undefined,
       })),
+      screener,
     };
 
     mkdirSync(dirname(CACHE), { recursive: true });
