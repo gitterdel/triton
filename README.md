@@ -50,6 +50,18 @@ identity/
 └── register_identity.py  ERC-8004 registration via BNB Agent SDK
 ```
 
+## Backed by data
+
+Backtest over the last 21 days (hourly CMC data, bear-market window), replaying the **exact live engine** — same strategy, same risk manager, same accounting; only the feed is simulated:
+
+| Metric | Triton | Buy & hold (watchlist) |
+|---|---|---|
+| Return | **−0.30%** | −18.22% |
+| Max drawdown | **−2.85%** | >20% |
+| Win rate | 67% | — |
+
+**+17.9 points of alpha in a crash.** The regime regulator kept Triton in cash while the market bled, the few entries it took were net winners, and the risk manager blocked 38 trades that didn't meet the bar. Reproduce it: `npm run backtest -- 21`
+
 ## Run it
 
 ```bash
