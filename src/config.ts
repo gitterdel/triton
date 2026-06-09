@@ -7,6 +7,8 @@ export const config = {
   executionMode: (process.env.EXECUTION_MODE ?? "paper") as "paper" | "live",
   paperStartingUsd: Number(process.env.PAPER_STARTING_USD ?? 1000),
   tickIntervalSeconds: Number(process.env.TICK_INTERVAL_SECONDS ?? 300),
+  // Vigilancia rápida de stops entre ticks completos ("drawdown = reaction time")
+  fastCheckSeconds: Number(process.env.FAST_CHECK_SECONDS ?? 60),
 
   // Tokens con buena liquidez en PancakeSwap (BSC). symbol -> CMC id.
   watchlist: {

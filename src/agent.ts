@@ -64,9 +64,36 @@ export async function tick(): Promise<void> {
   );
 }
 
+// Vigilancia rápida entre ticks: solo stop-loss/take-profit de posiciones
+// abiertas (1 llamada de quotes, sin F&G ni estrategia). Reduce el tiempo de
+// reacción ante caídas bruscas — y el drawdown es tiempo de reacción.
+export async function fastCheck(): Promise<void> {
+  const portfolio = loadPortfolio();
+  if (portfolio.positions.length === 0) return;
+
+  const { fetchQuotes } = await import("./signals/cmc.js");
+  const signals = await fetchQuotes();
+  const { orders } = applyRisk([], portfolio, signals);
+  if (orders.length === 0) return;
+
+  for (const order of orders) {
+    try {
+      const fill = await executor.execute(order);
+      applyFill(portfolio, fill);
+      console.log(
+        `  ⚡ FAST ${order.side} ${order.symbol} $${order.amountUsd.toFixed(2)} :: ${order.reason}`,
+      );
+    } catch (err) {
+      console.error(`  ❌ FAST falló ${order.side} ${order.symbol}:`, (err as Error).message);
+    }
+  }
+  savePortfolio(portfolio);
+  await publishState();
+}
+
 export async function runLoop(): Promise<void> {
   console.log(
-    `Triton arrancando: modo=${config.executionMode}, intervalo=${config.tickIntervalSeconds}s, watchlist=${Object.keys(config.watchlist).join(",")}`,
+    `Triton arrancando: modo=${config.executionMode}, tick=${config.tickIntervalSeconds}s, fast-check=${config.fastCheckSeconds}s, watchlist=${Object.keys(config.watchlist).join(",")}`,
   );
   for (;;) {
     try {
@@ -74,6 +101,15 @@ export async function runLoop(): Promise<void> {
     } catch (err) {
       console.error("Tick falló (se reintenta en el próximo intervalo):", (err as Error).message);
     }
-    await new Promise((r) => setTimeout(r, config.tickIntervalSeconds * 1000));
+    // Entre ticks completos: fast-checks de stops
+    const rounds = Math.max(1, Math.floor(config.tickIntervalSeconds / config.fastCheckSeconds));
+    for (let i = 0; i < rounds; i++) {
+      await new Promise((r) => setTimeout(r, config.fastCheckSeconds * 1000));
+      try {
+        await fastCheck();
+      } catch (err) {
+        console.error("Fast-check falló:", (err as Error).message);
+      }
+    }
   }
 }
