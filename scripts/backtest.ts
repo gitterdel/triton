@@ -13,6 +13,7 @@ import { decide } from "../src/strategy/engine.js";
 import { applyRisk } from "../src/risk/manager.js";
 import { applyFill, simulatedFee } from "../src/state/portfolio.js";
 import type { MarketContext, Portfolio, TokenSignal } from "../src/types.js";
+import { taSnapshot } from "../src/strategy/ta.js";
 
 const DAYS = Number(process.argv[2] ?? 30);
 const WARMUP_H = 169; // 7d + 1h para poder calcular percentChange7d
@@ -158,8 +159,13 @@ async function main(): Promise<void> {
       high168h[sym] = hi168;
       range24hPct[sym] = lo24 < Infinity && lo24 > 0 ? ((hi24 - lo24) / lo24) * 100 : 0;
     }
+    const ta: NonNullable<MarketContext["ta"]> = {};
+    for (const [sym, h] of histories) {
+      const t = taSnapshot(h.slice(Math.max(0, i - 25), i).map((p) => p.price));
+      if (t) ta[sym] = t;
+    }
 
-    const ctx: MarketContext = { signals, fearGreedValue: fg, fearGreedLabel: String(fg), trending: [], high48h, low48h, high168h, range24hPct };
+    const ctx: MarketContext = { signals, fearGreedValue: fg, fearGreedLabel: String(fg), trending: [], high48h, low48h, high168h, range24hPct, ta };
 
     const decisions = decide(ctx, portfolio);
     const { orders, blocked } = applyRisk(decisions, portfolio, signals);

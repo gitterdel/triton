@@ -161,6 +161,38 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
       };
     }
 
+    // Módulo DIP (lab, escuela E0V1E — la dominante del spot open source):
+    // sobreventa AGUDA de corto plazo (RSI4 hundido) con caída aún en curso
+    // (RSI20 decreciente), precio claramente bajo su media, pero VETADO el
+    // pánico estructural (RSI14 con suelo). Salida estilo range: ±3% y fuera.
+    if (process.env.TEST_DIP === "1") {
+      const t = ctx.ta?.[s.symbol];
+      if (
+        t &&
+        Number.isFinite(t.sma15) &&
+        s.priceUsd < t.sma15 * 0.96 &&
+        t.rsi4 < 35 &&
+        t.rsi14 > 28 &&
+        t.rsi20 < t.rsi20Prev &&
+        s.percentChange7d > -15 &&
+        !pumped &&
+        !betaBlocked &&
+        !held.has(s.symbol)
+      ) {
+        return {
+          symbol: s.symbol,
+          action: "BUY" as const,
+          confidence: 0.65,
+          reasons: [
+            `DIP: precio ${(100 * (s.priceUsd / t.sma15 - 1)).toFixed(1)}% bajo SMA15 con RSI4=${t.rsi4.toFixed(0)} (RSI14=${t.rsi14.toFixed(0)} sano)`,
+            ...reasons.slice(1),
+          ],
+          signal: s,
+          strategy: "range" as const,
+        };
+      }
+    }
+
     // Módulo RANGE: si momentum no ve nada, buscar reversión a la media en
     // tokens lateralizados — comprar el dip que se está girando, con target
     // y stop cortos. Apagado en pánico (los rangos se rompen a la baja).

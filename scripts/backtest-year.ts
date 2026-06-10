@@ -16,6 +16,7 @@ import { decide } from "../src/strategy/engine.js";
 import { applyRisk } from "../src/risk/manager.js";
 import { applyFill, simulatedFee } from "../src/state/portfolio.js";
 import type { MarketContext, Portfolio, TokenSignal } from "../src/types.js";
+import { taSnapshot } from "../src/strategy/ta.js";
 
 const DAYS = Number(process.argv[2] ?? 365);
 const WARMUP = 169;
@@ -153,6 +154,11 @@ async function main() {
       high168h[sym] = h168;
       range24hPct[sym] = l24 > 0 && l24 < Infinity ? ((h24 - l24) / l24) * 100 : 0;
     }
+    const ta: NonNullable<MarketContext["ta"]> = {};
+    for (const [sym, c] of series) {
+      const t = taSnapshot(c.slice(Math.max(0, i - 25), i).map((p) => p.price));
+      if (t) ta[sym] = t;
+    }
     const ctx: MarketContext = {
       signals,
       fearGreedValue: fng.get(day) ?? 50,
@@ -162,6 +168,7 @@ async function main() {
       low48h,
       high168h,
       range24hPct,
+      ta,
     };
     const decisions = decide(ctx, portfolio);
     const { orders } = applyRisk(decisions, portfolio, signals);
