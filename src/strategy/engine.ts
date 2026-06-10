@@ -109,7 +109,15 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     const MAX_1H = Number(process.env.TEST_MAX_1H ?? STRATEGY_PARAMS.maxEntry1hPct);
     const overextended = s.percentChange1h > MAX_1H;
 
-    if (score >= buyThreshold && confirmed && !betaBlocked && !overextended && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
+    // H7 (lab): veto de resistencia — no comprar momentum justo DEBAJO de la
+    // resistencia semanal (zona de oferta). Ese territorio es del breakout:
+    // o la rompe con volumen, o la rechaza y no había que estar dentro.
+    const RES_PCT = Number(process.env.TEST_RESISTANCE_PCT ?? 0); // 0 = apagado
+    const hi168 = ctx.high168h?.[s.symbol];
+    const underResistance =
+      RES_PCT > 0 && hi168 != null && s.priceUsd < hi168 && s.priceUsd > hi168 * (1 - RES_PCT / 100);
+
+    if (score >= buyThreshold && confirmed && !betaBlocked && !overextended && !underResistance && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
       const confidence = Math.min(0.95, 0.5 + (score - buyThreshold) / 10);
       return { symbol: s.symbol, action: "BUY" as const, confidence, reasons, signal: s, strategy: "momentum" as const };
     }

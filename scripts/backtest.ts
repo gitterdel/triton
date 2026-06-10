@@ -134,18 +134,24 @@ async function main(): Promise<void> {
     // Máximo rodante de 48h por símbolo (excluyendo la hora actual)
     const high48h: Record<string, number> = {};
     const low48h: Record<string, number> = {};
+    const high168h: Record<string, number> = {};
     for (const [sym, h] of histories) {
-      let hi = 0;
+      let hi48 = 0;
       let lo = Infinity;
-      for (let j = Math.max(0, i - 48); j < i; j++) {
-        hi = Math.max(hi, h[j].price);
-        lo = Math.min(lo, h[j].price);
+      let hi168 = 0;
+      for (let j = Math.max(0, i - 168); j < i; j++) {
+        hi168 = Math.max(hi168, h[j].price);
+        if (j >= i - 48) {
+          hi48 = Math.max(hi48, h[j].price);
+          lo = Math.min(lo, h[j].price);
+        }
       }
-      high48h[sym] = hi;
+      high48h[sym] = hi48;
       low48h[sym] = lo;
+      high168h[sym] = hi168;
     }
 
-    const ctx: MarketContext = { signals, fearGreedValue: fg, fearGreedLabel: String(fg), trending: [], high48h, low48h };
+    const ctx: MarketContext = { signals, fearGreedValue: fg, fearGreedLabel: String(fg), trending: [], high48h, low48h, high168h };
 
     const decisions = decide(ctx, portfolio);
     const { orders, blocked } = applyRisk(decisions, portfolio, signals);
