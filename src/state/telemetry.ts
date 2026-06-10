@@ -204,10 +204,11 @@ export function readEquity(): EquityPoint[] {
 
 // Máximo de precio por símbolo en las últimas N horas, reconstruido de
 // nuestro propio log de señales (para detectar breakouts en vivo).
-export function readRecentHighs(hours: number): Record<string, number> {
-  if (!existsSync(SIGNALS_LOG)) return {};
-  const cutoff = Date.now() - hours * 3600_000;
+export function readRecentExtremes(hours: number): { highs: Record<string, number>; lows: Record<string, number> } {
   const highs: Record<string, number> = {};
+  const lows: Record<string, number> = {};
+  if (!existsSync(SIGNALS_LOG)) return { highs, lows };
+  const cutoff = Date.now() - hours * 3600_000;
   for (const line of readFileSync(SIGNALS_LOG, "utf-8").split("\n")) {
     if (!line.trim()) continue;
     try {
@@ -215,10 +216,11 @@ export function readRecentHighs(hours: number): Record<string, number> {
       if (Date.parse(entry.t) < cutoff) continue;
       for (const s of entry.signals) {
         if (!(s.sym in highs) || s.px > highs[s.sym]) highs[s.sym] = s.px;
+        if (!(s.sym in lows) || s.px < lows[s.sym]) lows[s.sym] = s.px;
       }
     } catch {
       /* línea corrupta: ignorar */
     }
   }
-  return highs;
+  return { highs, lows };
 }

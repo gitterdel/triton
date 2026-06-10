@@ -16,7 +16,8 @@ export interface MarketContext {
   fearGreedLabel: string; // "Extreme Fear" .. "Extreme Greed"
   signals: TokenSignal[];
   trending: string[]; // símbolos trending en CMC (señal de atención/narrativa)
-  high48h?: Record<string, number>; // máximo de 48h por símbolo (para breakouts)
+  high48h?: Record<string, number>; // máximo de 48h por símbolo (resistencia, para breakouts)
+  low48h?: Record<string, number>; // mínimo de 48h por símbolo (soporte, para entradas range)
 }
 
 export type Action = "BUY" | "SELL" | "HOLD";

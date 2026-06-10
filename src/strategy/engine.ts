@@ -41,6 +41,9 @@ export const STRATEGY_PARAMS = {
     maxMarketDecline7d: -3, // media de 7d de la watchlist debe ser > -3%
     targetPct: 3,
     stopPct: 3,
+    // H6 (hipótesis del operador, adoptada 10-jun): comprar el dip solo a
+    // <2% del soporte (mínimo 48h) — backtest: +0.43pp, DD -0.4pp, WR 50%
+    nearSupportPct: 2,
   },
 };
 
@@ -148,7 +151,13 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     const sideways = Math.abs(s.percentChange7d) <= 5 && Math.abs(s.percentChange24h) <= 2.5;
     const dipTurning = s.percentChange24h <= -1.2 && s.percentChange1h >= 0.2;
     const marketSideways = marketAvg7d > R.maxMarketDecline7d;
-    if (sideways && dipTurning && marketSideways && ctx.fearGreedValue >= R.minFearGreed && !held.has(s.symbol)) {
+    // H6 (lab): comprar el dip solo CERCA DEL SOPORTE (mínimo 48h) — el suelo
+    // del rango, no cualquier punto de la caída
+    const lo48 = ctx.low48h?.[s.symbol];
+    // Si aún no hay datos de mínimos (radar calentando), se permite la entrada
+    // clásica; con datos, se exige proximidad al soporte.
+    const nearSupport = lo48 == null || s.priceUsd <= lo48 * (1 + R.nearSupportPct / 100);
+    if (sideways && dipTurning && marketSideways && nearSupport && ctx.fearGreedValue >= R.minFearGreed && !held.has(s.symbol)) {
       const confidence = Math.min(0.85, 0.6 + Math.abs(s.percentChange24h) / 20);
       return {
         symbol: s.symbol,
