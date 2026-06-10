@@ -101,7 +101,7 @@ export async function refreshIntel(): Promise<Intel | null> {
     const [narrativesRaw, macroRaw, newsRaw, screener] = await Promise.all([
       mcpCall("trending_crypto_narratives", { limit: 6 }).catch(() => null),
       mcpCall("get_upcoming_macro_events", {}).catch(() => null),
-      mcpCall("get_crypto_latest_news", { symbol: "ETH", limit: 4 }).catch(() => null),
+      mcpCall("get_crypto_latest_news", { id: "1" }).catch(() => null), // BTC = pulso del mercado
       fetchScreener().catch(() => [] as ScreenerRow[]),
     ]);
 
@@ -117,7 +117,7 @@ export async function refreshIntel(): Promise<Intel | null> {
         title: String(e.title ?? ""),
         date: String(e.eventDate ?? ""),
       })),
-      news: (Array.isArray(newsRaw?.news) ? newsRaw.news : []).slice(0, 4).map((n: any) => ({
+      news: rowsToObjects(newsRaw).slice(0, 4).map((n) => ({
         title: String(n.title ?? ""),
         url: n.url ? String(n.url) : undefined,
       })),
