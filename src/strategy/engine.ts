@@ -59,9 +59,10 @@ function regimeAdjustment(fearGreed: number): { buyThreshold: number; sellThresh
   // producía whipsaws constantes en tendencia bajista): en los extremos del
   // sentimiento se exige MÁS momentum para entrar, no menos.
   const fearTh = Number(process.env.TEST_FEAR_TH ?? 3);
+  const neutralTh = Number(process.env.TEST_NEUTRAL_TH ?? 1.5);
   if (fearGreed >= 75) return { buyThreshold: 3, sellThreshold: -1.5 }; // greed: cautela al comprar
   if (fearGreed <= 25) return { buyThreshold: fearTh, sellThreshold: -4 }; // fear: solo momentum fuerte y confirmado
-  return { buyThreshold: 1.5, sellThreshold: -2 };
+  return { buyThreshold: neutralTh, sellThreshold: -2 };
 }
 
 export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {

@@ -47,6 +47,10 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
         reason: `HARD-DD GUARD: equity ${totalValue.toFixed(2)} < 80% del pico ${portfolio.peakEquityUsd.toFixed(2)} — liquidación defensiva`,
       });
     }
+    // Episodio cerrado: el high-water mark se resetea al nivel actual. Sin
+    // esto, el bot quedaba congelado PARA SIEMPRE tras un episodio (y en
+    // competición violaría el mínimo de 1 trade/día).
+    portfolio.peakEquityUsd = totalValue;
     return { orders, blocked, killSwitchActive: true };
   }
 
