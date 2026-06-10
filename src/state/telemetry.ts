@@ -23,6 +23,7 @@ export interface TickState {
   fearGreedLabel: string;
   killSwitchActive: boolean;
   trending: string[];
+  high48h?: Record<string, number>;
   decisions: {
     symbol: string;
     action: string;
@@ -41,7 +42,7 @@ export interface TickState {
     totalUsd: number;
     realizedPnlUsd: number;
     dailyPnlUsd: number;
-    positions: { symbol: string; qty: number; avgEntryUsd: number; currentUsd: number; pnlPct: number; openedAt: string }[];
+    positions: { symbol: string; qty: number; avgEntryUsd: number; currentUsd: number; pnlPct: number; openedAt: string; peakUsd?: number; strategy?: string; stopUsd?: number }[];
     tradeCount: number;
     maxDrawdownPct: number;
     winRate: number | null; // null hasta que haya trades cerrados
@@ -80,6 +81,15 @@ export function writeTickState(
   const priceOf = (sym: string) => ctx.signals.find((s) => s.symbol === sym)?.priceUsd ?? 0;
   const positions = portfolio.positions.map((p) => {
     const price = priceOf(p.symbol) || p.avgEntryUsd;
+    // Nivel de stop vigente (réplica de la lógica del risk manager, para el chart)
+    let stopUsd: number;
+    if (p.strategy === "range") {
+      stopUsd = p.avgEntryUsd * 0.97;
+    } else {
+      const peak = p.peakUsd ?? p.avgEntryUsd;
+      const armed = (peak - p.avgEntryUsd) / p.avgEntryUsd >= RISK_LIMITS.trailingActivationPct;
+      stopUsd = Math.max(p.avgEntryUsd * (1 - RISK_LIMITS.stopLossPct), armed ? peak * (1 - RISK_LIMITS.trailingStopPct) : 0);
+    }
     return {
       symbol: p.symbol,
       qty: p.qty,
@@ -87,6 +97,9 @@ export function writeTickState(
       currentUsd: p.qty * price,
       pnlPct: ((price - p.avgEntryUsd) / p.avgEntryUsd) * 100,
       openedAt: p.openedAt,
+      peakUsd: p.peakUsd,
+      strategy: p.strategy,
+      stopUsd,
     };
   });
   const totalUsd = portfolio.cashUsd + positions.reduce((s, p) => s + p.currentUsd, 0);
@@ -111,6 +124,7 @@ export function writeTickState(
     fearGreedLabel: ctx.fearGreedLabel,
     killSwitchActive: risk.killSwitchActive,
     trending: ctx.trending.filter((t) => ctx.signals.some((s) => s.symbol === t)),
+    high48h: ctx.high48h,
     decisions: decisions.map((d) => ({
       symbol: d.symbol,
       action: d.action,
