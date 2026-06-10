@@ -18,6 +18,9 @@ export const STRATEGY_PARAMS = {
     fear: { fg: "<=25", buyThreshold: 3, sellThreshold: -4 },
   },
   buyConfirmation: "24h > 0 AND 7d > -15% AND volume24h rising",
+  // H5 (hipótesis del operador, adoptada 10-jun): no perseguir velas horarias
+  // verticales — backtest: +1.46pp de retorno con veto en 2.5%
+  maxEntry1hPct: 2.5,
   // Módulo BREAKOUT: compra rupturas de máximos de 48h con volumen.
   // Entra al nacer la tendencia, antes de que el momentum acumulado confirme.
   breakout: {
@@ -97,7 +100,12 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
       process.env.TEST_EARLY_VOL === "1" && s.volumeChange24h > 50 && s.percentChange1h > 1.5 && s.percentChange7d > -15;
     const confirmed = (s.percentChange24h > 0 && s.percentChange7d > -15 && s.volumeChange24h > 0) || earlyVolEntry;
 
-    if (score >= buyThreshold && confirmed && !betaBlocked && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
+    // H5 (adoptada): veto de sobreextensión — no perseguir velas horarias ya
+    // verticales (comprar el pico del latigazo = entrada tardía)
+    const MAX_1H = Number(process.env.TEST_MAX_1H ?? STRATEGY_PARAMS.maxEntry1hPct);
+    const overextended = s.percentChange1h > MAX_1H;
+
+    if (score >= buyThreshold && confirmed && !betaBlocked && !overextended && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
       const confidence = Math.min(0.95, 0.5 + (score - buyThreshold) / 10);
       return { symbol: s.symbol, action: "BUY" as const, confidence, reasons, signal: s, strategy: "momentum" as const };
     }

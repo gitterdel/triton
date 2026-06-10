@@ -24,6 +24,7 @@ function redactForPublic(state: TickState | null): TickState | null {
     },
     trendingBoost: NaN,
     volumeBoost: { threshold: NaN, up: NaN, down: NaN },
+    maxEntry1hPct: NaN,
   };
   for (const d of s.decisions) {
     d.reasons = d.reasons.map((r) =>
