@@ -64,6 +64,10 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
   const trending = new Set(ctx.trending);
   // Salud global del mercado: media del 7d de toda la watchlist
   const marketAvg7d = ctx.signals.reduce((sum, x) => sum + x.percentChange7d, 0) / (ctx.signals.length || 1);
+  // TEST filtro de líderes: media 24h del mercado (BTC/ETH mandan: si el
+  // mercado cae hoy, la fuerza individual de una alt suele ser arrastrada)
+  const marketAvg24h = ctx.signals.reduce((sum, x) => sum + x.percentChange24h, 0) / (ctx.signals.length || 1);
+  const LEADER_GATE = Number(process.env.TEST_LEADER_GATE ?? -99); // -99 = apagado
 
   // Risk-on global: mercado no cayendo + sentimiento fuera del miedo
   const riskOn = marketAvg7d > -3 && ctx.fearGreedValue >= 35;
@@ -89,7 +93,7 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     // - no comprar cuchillos cayendo (7d peor que -15%)
     const confirmed = s.percentChange24h > 0 && s.percentChange7d > -15 && s.volumeChange24h > 0;
 
-    if (score >= buyThreshold && confirmed && !betaBlocked && !held.has(s.symbol)) {
+    if (score >= buyThreshold && confirmed && !betaBlocked && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
       const confidence = Math.min(0.95, 0.5 + (score - buyThreshold) / 10);
       return { symbol: s.symbol, action: "BUY" as const, confidence, reasons, signal: s, strategy: "momentum" as const };
     }
