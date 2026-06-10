@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config, RISK_LIMITS } from "../config.js";
 import type { Fill, Order, Portfolio } from "../types.js";
@@ -48,6 +48,7 @@ export function applyFill(p: Portfolio, fill: Fill): void {
         openedAt: fill.executedAt,
         peakUsd: order.priceUsd,
         strategy: order.strategy ?? "momentum",
+        entryReason: order.reason,
       });
     }
     p.cashUsd -= order.amountUsd;
@@ -61,6 +62,29 @@ export function applyFill(p: Portfolio, fill: Fill): void {
     p.realizedPnlUsd += pnl;
     p.dailyPnlUsd += pnl;
     fill.realizedPnlUsd = pnl;
+
+    // Diario de operaciones: expediente completo de cada trade cerrado,
+    // para la autopsia sistemática entrada-por-entrada
+    const holdH = (Date.parse(fill.executedAt) - Date.parse(pos.openedAt)) / 3600_000;
+    appendFileSync(
+      join(process.cwd(), "data", "trade-journal.jsonl"),
+      JSON.stringify({
+        symbol: order.symbol,
+        strategy: pos.strategy ?? "momentum",
+        entryAt: pos.openedAt,
+        entryPx: pos.avgEntryUsd,
+        entryWhy: pos.entryReason ?? "",
+        peakPx: pos.peakUsd,
+        maxGainPct: pos.peakUsd ? ((pos.peakUsd - pos.avgEntryUsd) / pos.avgEntryUsd) * 100 : 0,
+        exitAt: fill.executedAt,
+        exitPx: order.priceUsd,
+        exitWhy: order.reason,
+        holdHours: Math.round(holdH * 10) / 10,
+        pnlUsd: Math.round(pnl * 100) / 100,
+        pnlPct: Math.round(((order.priceUsd - pos.avgEntryUsd) / pos.avgEntryUsd) * 10000) / 100,
+      }) + "\n",
+    );
+
     p.positions = p.positions.filter((x) => x.symbol !== order.symbol);
   }
   p.history.push(fill);

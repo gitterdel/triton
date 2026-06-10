@@ -56,6 +56,7 @@ export interface Position {
   openedAt: string;
   peakUsd?: number; // máximo visto desde la entrada (para el trailing stop)
   strategy?: StrategyKind; // determina el perfil de salida (momentum: trailing; range: target fijo)
+  entryReason?: string; // contexto de la entrada (para el diario de operaciones)
 }
 
 export interface Portfolio {
