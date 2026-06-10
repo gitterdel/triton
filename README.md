@@ -1,6 +1,6 @@
 # TRITON — Autonomous Trading Agent for BSC
 
-> **BNB HACK 2026 · Track 1: Autonomous Trading Agents**
+> **BNB HACK 2026 · Track 1: Autonomous Trading Agents · Track 2: [Strategy Skill](skill/SKILL.md)**
 > Reads CMC signals → decides → signs & executes via Trust Wallet — with an on-chain ERC-8004 identity.
 
 **Live dashboard:** https://triton-dashboard.vercel.app
