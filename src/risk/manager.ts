@@ -109,7 +109,11 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
       }
       const maxByPct = totalValue * RISK_LIMITS.maxPositionPctOfPortfolio;
       // Las entradas RANGE van a media talla: son apuestas de menor convicción
-      const sizeFactor = d.strategy === "range" ? 0.5 : 1;
+      let sizeFactor = d.strategy === "range" ? 0.5 : 1;
+      // H3 (lab): talla por volatilidad — token más movido, posición más chica
+      if (process.env.TEST_VOL_SIZING === "1") {
+        sizeFactor *= Math.min(1, Math.max(0.4, 4 / Math.max(1, Math.abs(d.signal.percentChange24h))));
+      }
       const amountUsd = Math.min(RISK_LIMITS.maxTradeUsd * sizeFactor, maxByPct * sizeFactor, portfolio.cashUsd * 0.95);
       if (amountUsd < RISK_LIMITS.minTradeUsd) {
         blocked.push({ decision: d, why: `importe ${amountUsd.toFixed(2)} USD < mínimo ${RISK_LIMITS.minTradeUsd}` });

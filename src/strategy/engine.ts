@@ -91,7 +91,11 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     // Filtros de confirmación anti-whipsaw (validados por backtest):
     // - el 24h debe acompañar (no comprar rebotes de 1h dentro de caídas)
     // - no comprar cuchillos cayendo (7d peor que -15%)
-    const confirmed = s.percentChange24h > 0 && s.percentChange7d > -15 && s.volumeChange24h > 0;
+    // H2 (lab): entrada anticipada guiada por volumen — si el volumen explota
+    // y la última hora empuja fuerte, no esperar al 24h verde
+    const earlyVolEntry =
+      process.env.TEST_EARLY_VOL === "1" && s.volumeChange24h > 50 && s.percentChange1h > 1.5 && s.percentChange7d > -15;
+    const confirmed = (s.percentChange24h > 0 && s.percentChange7d > -15 && s.volumeChange24h > 0) || earlyVolEntry;
 
     if (score >= buyThreshold && confirmed && !betaBlocked && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
       const confidence = Math.min(0.95, 0.5 + (score - buyThreshold) / 10);
