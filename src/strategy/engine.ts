@@ -58,8 +58,9 @@ function regimeAdjustment(fearGreed: number): { buyThreshold: number; sellThresh
   // El backtest desmintió la versión contrarian original (buyTh=1 en fear
   // producía whipsaws constantes en tendencia bajista): en los extremos del
   // sentimiento se exige MÁS momentum para entrar, no menos.
+  const fearTh = Number(process.env.TEST_FEAR_TH ?? 3);
   if (fearGreed >= 75) return { buyThreshold: 3, sellThreshold: -1.5 }; // greed: cautela al comprar
-  if (fearGreed <= 25) return { buyThreshold: 3, sellThreshold: -4 }; // fear: solo momentum fuerte y confirmado
+  if (fearGreed <= 25) return { buyThreshold: fearTh, sellThreshold: -4 }; // fear: solo momentum fuerte y confirmado
   return { buyThreshold: 1.5, sellThreshold: -2 };
 }
 
@@ -156,7 +157,8 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     const lo48 = ctx.low48h?.[s.symbol];
     // Si aún no hay datos de mínimos (radar calentando), se permite la entrada
     // clásica; con datos, se exige proximidad al soporte.
-    const nearSupport = lo48 == null || s.priceUsd <= lo48 * (1 + R.nearSupportPct / 100);
+    const supportPct = Number(process.env.TEST_SUPPORT_PCT ?? R.nearSupportPct);
+    const nearSupport = lo48 == null || s.priceUsd <= lo48 * (1 + supportPct / 100);
     if (sideways && dipTurning && marketSideways && nearSupport && ctx.fearGreedValue >= R.minFearGreed && !held.has(s.symbol)) {
       const confidence = Math.min(0.85, 0.6 + Math.abs(s.percentChange24h) / 20);
       return {
