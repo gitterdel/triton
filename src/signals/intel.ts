@@ -19,6 +19,7 @@ export interface Intel {
   narratives: { rank: number; name: string; change24h: string; keywords: string[] }[];
   macroEvents: { title: string; date: string }[];
   news: { title: string; url?: string }[];
+  econ: { title: string; country: string; date: string; forecast: string; previous: string }[];
   screener: ScreenerRow[];
   botScan?: { updatedAt: string; results: Record<string, { ret: number; dd: number; trades: number; wr: number | null; bh: number }> } | null;
 }
@@ -38,6 +39,22 @@ export interface ScreenerRow {
 const ELIGIBLE = new Set(
   `ETH USDT USDC XRP TRX DOGE ZEC ADA LINK BCH DAI TON USD1 USDE M LTC AVAX SHIB XAUT WLFI H DOT UNI ASTER DEXE USDD ETC AAVE ATOM U STABLE FIL INJ NIGHT FET TUSD BONK PENGU CAKE SIREN LUNC ZRO KITE FDUSD BEAT PIEVERSE BTT NFT EDGE FLOKI LDO B FF PENDLE NEX STG AXS TWT HOME RAY COMP GWEI XCN GENIUS XPL BAT SKYAI APE IP SFP TAG NXPC AB SAHARA 1INCH CHEEMS BANANAS31 RIVER MYX RAVE SNX FORM LAB HTX USDF CTM BDX SLX UB DUCKY FRAX BILL WFI KOGE ALE FRXUSD GOMINING VCNT GUA DUSD SMILEK 0G BEAM MY SOON REAL Q AIOZ ZIG YFI TAC LISUSD CYS ZAMA TRIA HUMA PLUME ZIL XPR ZETA BABYDOGE NILA ROSE VELO UAI BRETT OPEN BSB TOSHI BAS ACH AXL LUR ELF KAVA APR IRYS EURI XUSD BARD DUSK SUSHI PEAQ COAI BDCA XAUM`.split(/\s+/),
 );
+
+// Calendario económico tradicional (IPC, Fed, empleo...) — feed semanal
+// público de ForexFactory. Solo eventos de impacto ALTO en USD/EUR.
+async function fetchEconCalendar(): Promise<Intel["econ"]> {
+  const res = await fetch("https://nfs.faireconomy.media/ff_calendar_thisweek.json", {
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`econ ${res.status}`);
+  const events = (await res.json()) as { title: string; country: string; date: string; impact: string; forecast: string; previous: string }[];
+  const now = Date.now() - 12 * 3600_000; // incluir lo de hoy aunque ya haya salido
+  return events
+    .filter((e) => e.impact === "High" && ["USD", "EUR"].includes(e.country) && Date.parse(e.date) > now)
+    .sort((a, b) => Date.parse(a.date) - Date.parse(b.date))
+    .slice(0, 6)
+    .map((e) => ({ title: e.title, country: e.country, date: e.date, forecast: e.forecast ?? "", previous: e.previous ?? "" }));
+}
 
 async function fetchScreener(): Promise<ScreenerRow[]> {
   const url = new URL("https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest");
@@ -98,11 +115,12 @@ export async function refreshIntel(): Promise<Intel | null> {
       if (Date.now() - Date.parse(cached.updatedAt) < TTL_MS) return cached;
     }
 
-    const [narrativesRaw, macroRaw, newsRaw, screener] = await Promise.all([
+    const [narrativesRaw, macroRaw, newsRaw, screener, econ] = await Promise.all([
       mcpCall("trending_crypto_narratives", { limit: 6 }).catch(() => null),
       mcpCall("get_upcoming_macro_events", {}).catch(() => null),
       mcpCall("get_crypto_latest_news", { id: "1" }).catch(() => null), // BTC = pulso del mercado
       fetchScreener().catch(() => [] as ScreenerRow[]),
+      fetchEconCalendar().catch(() => [] as Intel["econ"]),
     ]);
 
     const intel: Intel = {
@@ -113,14 +131,22 @@ export async function refreshIntel(): Promise<Intel | null> {
         change24h: String(n.marketCapChangePercentage24h ?? ""),
         keywords: Array.isArray(n.socialKeywords) ? (n.socialKeywords as string[]).slice(0, 3) : [],
       })),
-      macroEvents: rowsToObjects(macroRaw?.upcomingEventNews).slice(0, 4).map((e) => ({
-        title: String(e.title ?? ""),
-        date: String(e.eventDate ?? ""),
-      })),
-      news: rowsToObjects(newsRaw).slice(0, 4).map((n) => ({
-        title: String(n.title ?? ""),
-        url: n.url ? String(n.url) : undefined,
-      })),
+      macroEvents: rowsToObjects(macroRaw?.upcomingEventNews)
+        .map((e) => ({ title: String(e.title ?? ""), date: String(e.eventDate ?? "") }))
+        .sort((a, b) => Date.parse(a.date) - Date.parse(b.date))
+        .slice(0, 4),
+      // Anti-spam: solo titulares de calidad, sin anuncios de prediction
+      // markets ni texto no-latino
+      news: rowsToObjects(newsRaw)
+        .filter((n) => {
+          const t = String(n.title ?? "");
+          const q = String(n.quality ?? "").toLowerCase();
+          const ascii = (t.match(/[\x20-\x7e]/g) || []).length / Math.max(t.length, 1);
+          return ascii > 0.9 && !/prediction market|coinbase predictions|invest|earn up to/i.test(t) && q !== "low";
+        })
+        .slice(0, 4)
+        .map((n) => ({ title: String(n.title ?? ""), url: n.url ? String(n.url) : undefined })),
+      econ,
       screener,
       botScan: existsSync(join(process.cwd(), "data", "bot-scan.json"))
         ? JSON.parse(readFileSync(join(process.cwd(), "data", "bot-scan.json"), "utf-8"))
