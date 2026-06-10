@@ -19,6 +19,7 @@ async function twak(args: string[]): Promise<string> {
   const { stdout } = await exec("twak", args, {
     shell: process.platform === "win32",
     timeout: 60_000,
+    killSignal: "SIGKILL",
     env: process.env,
   });
   return stdout;
@@ -86,14 +87,18 @@ export async function clearFailsafeStop(symbol: string): Promise<void> {
   }
 }
 
+// Margen del failsafe BAJO el stop del agente (auditoría #4: al mismo nivel,
+// agente y watcher TWAK disparaban a la vez sobre la misma posición — el que
+// perdía la carrera fallaba por balance y rompía la contabilidad). El
+// failsafe es paracaídas de emergencia, no competidor: solo actúa si el
+// agente está muerto y el precio sigue cayendo.
+const FAILSAFE_MARGIN = 0.98;
+
 export function stopPriceFor(avgEntryUsd: number, peakUsd: number | undefined, strategy?: string): number {
-  // Posiciones range: stop fijo simétrico al target (sin trailing)
-  if (strategy === "range") return avgEntryUsd * 0.97;
-  // El failsafe replica la lógica del agente: el peor de los dos niveles
-  // (stop fijo desde entrada, o trailing desde pico si está armado).
+  if (strategy === "range") return avgEntryUsd * 0.97 * FAILSAFE_MARGIN;
   const hardStop = avgEntryUsd * (1 - RISK_LIMITS.stopLossPct);
   const peak = peakUsd ?? avgEntryUsd;
   const armed = (peak - avgEntryUsd) / avgEntryUsd >= RISK_LIMITS.trailingActivationPct;
   const trailStop = armed ? peak * (1 - RISK_LIMITS.trailingStopPct) : 0;
-  return Math.max(hardStop, trailStop);
+  return Math.max(hardStop, trailStop) * FAILSAFE_MARGIN;
 }

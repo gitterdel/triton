@@ -40,6 +40,16 @@ export const config = {
     //   SAHARA: { id: 36671, address: "0xFDFfB411C4A70AA7C95D5C981a6Fb4Da867e1111", highBeta: true },
   } as Record<string, { id: number; address: string; highBeta?: boolean }>,
 
+  // IDs de CMC de todo token que pudo estar en watchlist (auditoría C1: una
+  // posición cuyo símbolo sale de la watchlist debe seguir teniendo precio
+  // para que sus stops funcionen)
+  knownIds: {
+    ETH: 1027, CAKE: 7186, XRP: 52, DOGE: 74, ADA: 2010, LINK: 1975,
+    AVAX: 5805, LTC: 2, TWT: 5964, FET: 3773, ATOM: 3794,
+    DOT: 6636, UNI: 7083, TON: 11419, PENDLE: 9481,
+    ASTER: 36341, ZEC: 1437, SAHARA: 36671,
+  } as Record<string, number>,
+
   // Trade mínimo diario de la competición (1/día obligatorio en la semana live)
   complianceSymbol: "ETH",
   complianceTradeUsd: 12,

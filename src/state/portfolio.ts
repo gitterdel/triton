@@ -1,19 +1,29 @@
-import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, renameSync, copyFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config, RISK_LIMITS } from "../config.js";
 import type { Fill, Order, Portfolio } from "../types.js";
 
 const FILE = join(process.cwd(), "data", "portfolio.json");
+const BAK = FILE + ".bak";
 
+// Carga tolerante: si el archivo principal está corrupto (proceso muerto a
+// mitad de escritura), recupera del backup. Un libro corrupto en live
+// significaría un bot zombi: sin stops, sin compliance, sin trading.
 export function loadPortfolio(): Portfolio {
-  if (existsSync(FILE)) {
-    const p = JSON.parse(readFileSync(FILE, "utf-8")) as Portfolio;
-    const today = new Date().toISOString().slice(0, 10);
-    if (p.dailyPnlDate !== today) {
-      p.dailyPnlDate = today;
-      p.dailyPnlUsd = 0;
+  for (const f of [FILE, BAK]) {
+    if (!existsSync(f)) continue;
+    try {
+      const p = JSON.parse(readFileSync(f, "utf-8")) as Portfolio;
+      if (f === BAK) console.error("⚠️ portfolio.json corrupto — recuperado del backup");
+      const today = new Date().toISOString().slice(0, 10);
+      if (p.dailyPnlDate !== today) {
+        p.dailyPnlDate = today;
+        p.dailyPnlUsd = 0;
+      }
+      return p;
+    } catch {
+      console.error(`⚠️ ${f} ilegible, probando siguiente`);
     }
-    return p;
   }
   return {
     cashUsd: config.paperStartingUsd,
@@ -22,29 +32,44 @@ export function loadPortfolio(): Portfolio {
     dailyPnlUsd: 0,
     dailyPnlDate: new Date().toISOString().slice(0, 10),
     history: [],
+    peakEquityUsd: config.paperStartingUsd,
   };
 }
 
+// Escritura atómica (tmp + rename) con backup del estado anterior válido.
 export function savePortfolio(p: Portfolio): void {
   mkdirSync(dirname(FILE), { recursive: true });
-  writeFileSync(FILE, JSON.stringify(p, null, 2));
+  const tmp = FILE + ".tmp";
+  writeFileSync(tmp, JSON.stringify(p, null, 2));
+  if (existsSync(FILE)) {
+    try {
+      copyFileSync(FILE, BAK);
+    } catch {
+      /* backup best-effort */
+    }
+  }
+  renameSync(tmp, FILE);
 }
 
 // Aplica un fill al portfolio (común a paper y live: el estado contable es el mismo).
 export function applyFill(p: Portfolio, fill: Fill): void {
   const { order, fee } = fill;
   if (order.side === "BUY") {
-    const qty = (order.amountUsd - fee) / order.priceUsd;
+    // En live, usar los tokens REALES recibidos (auditoría: la deriva entre
+    // qty contable y qty real acaba reventando los SELL por decimales)
+    const qty = fill.actualQty ?? (order.amountUsd - fee) / order.priceUsd;
+    // El basis incluye la fee de compra: avgEntry = coste total / tokens
+    // (auditoría M1: antes la fee de compra desaparecía del PnL realizado)
     const existing = p.positions.find((pos) => pos.symbol === order.symbol);
     if (existing) {
-      const totalCost = existing.qty * existing.avgEntryUsd + qty * order.priceUsd;
+      const totalCost = existing.qty * existing.avgEntryUsd + order.amountUsd;
       existing.qty += qty;
       existing.avgEntryUsd = totalCost / existing.qty;
     } else {
       p.positions.push({
         symbol: order.symbol,
         qty,
-        avgEntryUsd: order.priceUsd,
+        avgEntryUsd: order.amountUsd / qty,
         openedAt: fill.executedAt,
         peakUsd: order.priceUsd,
         strategy: order.strategy ?? "momentum",
@@ -54,8 +79,16 @@ export function applyFill(p: Portfolio, fill: Fill): void {
     p.cashUsd -= order.amountUsd;
   } else {
     const pos = p.positions.find((x) => x.symbol === order.symbol);
-    if (!pos) return;
-    const proceeds = order.amountUsd - fee;
+    if (!pos) {
+      // Auditoría C3: un fill live ya ejecutado JAMÁS se descarta — el cash
+      // real se movió. Se acredita aunque la posición no exista en el libro.
+      const orphanProceeds = fill.actualProceedsUsd ?? order.amountUsd - fee;
+      p.cashUsd += orphanProceeds;
+      p.history.push(fill);
+      console.error(`⚠️ SELL sin posición en el libro (${order.symbol}) — proceeds acreditados, revisar reconciliación`);
+      return;
+    }
+    const proceeds = fill.actualProceedsUsd ?? order.amountUsd - fee;
     const costBasis = pos.qty * pos.avgEntryUsd;
     const pnl = proceeds - costBasis;
     p.cashUsd += proceeds;

@@ -58,7 +58,17 @@ export async function publishState(): Promise<void> {
     if (delayMin > 0) {
       mkdirSync(join(process.cwd(), "data"), { recursive: true });
       appendFileSync(QUEUE_FILE, JSON.stringify({ ts: Date.now(), snapshot }) + "\n");
-      const lines = readFileSync(QUEUE_FILE, "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+      // Líneas corruptas (crash a mitad de append) se descartan en silencio
+      const lines = readFileSync(QUEUE_FILE, "utf-8")
+        .trim()
+        .split("\n")
+        .flatMap((l) => {
+          try {
+            return [JSON.parse(l)];
+          } catch {
+            return [];
+          }
+        });
       const cutoff = Date.now() - delayMin * 60_000;
       const eligible = lines.filter((l) => l.ts <= cutoff);
       if (!eligible.length) return; // aún no hay snapshot suficientemente viejo

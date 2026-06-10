@@ -7,9 +7,17 @@ export interface RiskResult {
   killSwitchActive: boolean;
 }
 
-function portfolioValueUsd(p: Portfolio, signals: TokenSignal[]): number {
-  const priceOf = (sym: string) => signals.find((s) => s.symbol === sym)?.priceUsd ?? 0;
-  return p.cashUsd + p.positions.reduce((sum, pos) => sum + pos.qty * priceOf(pos.symbol), 0);
+// Valoración única y compartida: posición sin señal se valora a su precio de
+// entrada (auditoría C1: valorarla a 0 encogía el total y rompía el kill
+// switch y el sizing).
+export function portfolioValueUsd(p: Portfolio, signals: TokenSignal[]): number {
+  return (
+    p.cashUsd +
+    p.positions.reduce((sum, pos) => {
+      const sig = signals.find((s) => s.symbol === pos.symbol);
+      return sum + pos.qty * (sig?.priceUsd ?? pos.avgEntryUsd);
+    }, 0)
+  );
 }
 
 // Aplica los límites duros sobre las decisiones de la estrategia y genera
@@ -20,8 +28,30 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
   const blocked: RiskResult["blocked"] = [];
   const totalValue = portfolioValueUsd(portfolio, signals);
 
+  // 0. GUARDA DURA DE DRAWDOWN TOTAL (anti-descalificación, auditoría C4):
+  // high-water mark persistido en el libro; si el equity cae >20% desde el
+  // pico (margen amplio sobre el 30% que descalifica), se liquida TODO a
+  // cash y se bloquean compras. Nadie más vigila el acumulado.
+  portfolio.peakEquityUsd = Math.max(portfolio.peakEquityUsd ?? totalValue, totalValue);
+  const hardDdBreached = totalValue > 0 && totalValue < portfolio.peakEquityUsd * 0.8;
+  if (hardDdBreached) {
+    for (const pos of portfolio.positions) {
+      const sig = signals.find((s) => s.symbol === pos.symbol);
+      const px = sig?.priceUsd ?? pos.avgEntryUsd;
+      orders.push({
+        symbol: pos.symbol,
+        side: "SELL",
+        amountUsd: pos.qty * px,
+        priceUsd: px,
+        qty: pos.qty,
+        reason: `HARD-DD GUARD: equity ${totalValue.toFixed(2)} < 80% del pico ${portfolio.peakEquityUsd.toFixed(2)} — liquidación defensiva`,
+      });
+    }
+    return { orders, blocked, killSwitchActive: true };
+  }
+
   // 1. Kill switch diario
-  const killSwitchActive = portfolio.dailyPnlUsd <= -RISK_LIMITS.dailyLossCapPct * totalValue;
+  const killSwitchActive = totalValue > 0 && portfolio.dailyPnlUsd <= -RISK_LIMITS.dailyLossCapPct * totalValue;
 
   // 2. Stop-loss / take-profit: se evalúan siempre, incluso con kill switch
   //    (cerrar posiciones reduce riesgo, abrirlas lo aumenta).
@@ -29,8 +59,11 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
     const sig = signals.find((s) => s.symbol === pos.symbol);
     if (!sig) continue;
 
-    // Actualizar máximo visto (se persiste al guardar el portfolio)
-    pos.peakUsd = Math.max(pos.peakUsd ?? pos.avgEntryUsd, sig.priceUsd);
+    // Actualizar máximo visto (se persiste al guardar el portfolio).
+    // Guarda anti-spike (auditoría B3): un print basura de la API (+25% en un
+    // tick) no debe armar el trailing sobre un pico fantasma.
+    const prevPeak = pos.peakUsd ?? pos.avgEntryUsd;
+    pos.peakUsd = sig.priceUsd <= prevPeak * 1.25 ? Math.max(prevPeak, sig.priceUsd) : prevPeak;
 
     const change = (sig.priceUsd - pos.avgEntryUsd) / pos.avgEntryUsd;
     const peakGain = (pos.peakUsd - pos.avgEntryUsd) / pos.avgEntryUsd;
@@ -45,6 +78,7 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
           side: "SELL",
           amountUsd: pos.qty * sig.priceUsd,
           priceUsd: sig.priceUsd,
+          qty: pos.qty,
           reason: change >= 0.03
             ? `RANGE TARGET: +${(change * 100).toFixed(2)}% — beneficio tomado`
             : `RANGE STOP: ${(change * 100).toFixed(2)}% — el rango no aguantó`,
@@ -60,6 +94,7 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
         side: "SELL",
         amountUsd: pos.qty * sig.priceUsd,
         priceUsd: sig.priceUsd,
+        qty: pos.qty,
         reason: `STOP-LOSS: ${(change * 100).toFixed(2)}% desde entrada ${pos.avgEntryUsd.toFixed(4)}`,
       });
     } else if (peakGain >= RISK_LIMITS.trailingActivationPct && fromPeak <= -RISK_LIMITS.trailingStopPct) {
@@ -68,7 +103,8 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
         side: "SELL",
         amountUsd: pos.qty * sig.priceUsd,
         priceUsd: sig.priceUsd,
-        reason: `TRAILING-STOP: ${(fromPeak * 100).toFixed(2)}% desde pico ${pos.peakUsd.toFixed(4)} (asegura +${(change * 100).toFixed(2)}%)`,
+        qty: pos.qty,
+        reason: `TRAILING-STOP: ${(fromPeak * 100).toFixed(2)}% desde pico ${(pos.peakUsd ?? pos.avgEntryUsd).toFixed(4)} (asegura +${(change * 100).toFixed(2)}%)`,
       });
     }
   }
@@ -91,13 +127,16 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
       }
       // Cooldown post-stop: si este token nos sacó con pérdida en las últimas
       // 24h, no se recompra (evita morir a whipsaws en el mismo token).
+      // Reloj propio, no el timestamp de CMC (auditoría M3: un timestamp
+      // congelado o malformado rompía el cooldown en ambas direcciones).
+      // Las ventas de compliance no disparan cooldown (no son stops reales).
       const recentLoss = portfolio.history.some(
         (f) =>
           f.order.symbol === d.symbol &&
           f.order.side === "SELL" &&
           (f.realizedPnlUsd ?? 0) < 0 &&
-          Date.parse(d.signal.timestamp || new Date().toISOString()) - Date.parse(f.executedAt) <
-            24 * 3600 * 1000,
+          !f.order.reason.startsWith("COMPLIANCE") &&
+          Date.now() - Date.parse(f.executedAt) < 24 * 3600 * 1000,
       );
       if (recentLoss) {
         blocked.push({ decision: d, why: "cooldown 24h tras stop-loss en este token" });
@@ -135,6 +174,7 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
         side: "SELL",
         amountUsd: pos.qty * d.signal.priceUsd,
         priceUsd: d.signal.priceUsd,
+        qty: pos.qty,
         reason: d.reasons[0],
       });
     }

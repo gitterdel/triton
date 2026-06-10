@@ -104,9 +104,18 @@ export function writeTickState(
   });
   const totalUsd = portfolio.cashUsd + positions.reduce((s, p) => s + p.currentUsd, 0);
 
-  // Curva de equity (se actualiza primero para poder calcular el drawdown)
+  // Curva de equity (se actualiza primero para poder calcular el drawdown).
+  // Tolerante a corrupción: un equity.json truncado se regenera vacío en vez
+  // de matar writeTickState para siempre (auditoría).
   let equity: EquityPoint[] = [];
-  if (existsSync(EQUITY_FILE)) equity = JSON.parse(readFileSync(EQUITY_FILE, "utf-8"));
+  if (existsSync(EQUITY_FILE)) {
+    try {
+      equity = JSON.parse(readFileSync(EQUITY_FILE, "utf-8"));
+    } catch {
+      console.error("⚠️ equity.json corrupto — regenerando");
+      equity = [];
+    }
+  }
   equity.push({ t: new Date().toISOString(), totalUsd, cashUsd: portfolio.cashUsd });
   if (equity.length > MAX_EQUITY_POINTS) equity = equity.slice(-MAX_EQUITY_POINTS);
 

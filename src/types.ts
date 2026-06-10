@@ -39,6 +39,7 @@ export interface Order {
   priceUsd: number;
   reason: string;
   strategy?: StrategyKind;
+  qty?: number; // SELL: cantidad EXACTA de tokens a vender (no derivar de amountUsd/price)
 }
 
 export interface Fill {
@@ -47,6 +48,8 @@ export interface Fill {
   txHash?: string; // presente en modo live
   fee: number;
   realizedPnlUsd?: number; // solo en SELL: PnL realizado de la posición cerrada
+  actualQty?: number; // live BUY: tokens REALES recibidos según twak (no estimados por precio CMC)
+  actualProceedsUsd?: number; // live SELL: USDT REALES recibidos según twak
 }
 
 export interface Position {
@@ -66,4 +69,5 @@ export interface Portfolio {
   dailyPnlUsd: number;
   dailyPnlDate: string; // YYYY-MM-DD, para resetear el cap diario
   history: Fill[];
+  peakEquityUsd?: number; // high-water mark del equity total (guarda anti-descalificación por DD 30%)
 }

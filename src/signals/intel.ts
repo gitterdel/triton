@@ -173,6 +173,11 @@ export async function refreshIntel(): Promise<Intel | null> {
     return intel;
   } catch (err) {
     console.error("  ⚠️ intel MCP falló (no crítico):", (err as Error).message);
-    return existsSync(CACHE) ? (JSON.parse(readFileSync(CACHE, "utf-8")) as Intel) : null;
+    // El propio cache puede ser la causa del fallo (corrupto): nunca re-lanzar
+    try {
+      return existsSync(CACHE) ? (JSON.parse(readFileSync(CACHE, "utf-8")) as Intel) : null;
+    } catch {
+      return null;
+    }
   }
 }

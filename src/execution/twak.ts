@@ -1,35 +1,79 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import type { Executor } from "./executor.js";
 import type { Fill, Order } from "../types.js";
 
 const exec = promisify(execFile);
 
 // Ejecutor real vía Trust Wallet Agent Kit (CLI `twak`).
-// - Cash leg: USDT en BSC. BUY = USDT -> token, SELL = token -> USDT.
-// - Las claves viven cifradas en ~/.twak/wallet.json y nunca salen de la máquina.
-// - La contraseña de la wallet se resuelve vía TWAK_WALLET_PASSWORD (env),
-//   nunca como argumento CLI.
-// - Siempre se pide quote primero; si el impacto de precio supera el límite,
-//   se aborta (protección extra a nivel de ejecución, además del RiskManager).
+// Blindado tras auditoría (10-jun):
+//  - parseo robusto del stdout (no asume JSON limpio)
+//  - éxito SOLO con txHash presente y sin error en el body
+//  - SELL por cantidad EXACTA truncada hacia abajo (nunca redondear arriba)
+//  - contabilidad con montos REALES del swap (output de twak), no precios CMC
+//  - si el fallo ocurre en la fase de ejecución (la tx pudo emitirse),
+//    se escribe un registro pendiente de reconciliación en disco
 
 const MAX_PRICE_IMPACT_PCT = 1.5;
 const SLIPPAGE_PCT = 1;
+const RECONCILE_FILE = join(process.cwd(), "data", "pending-reconcile.jsonl");
 
 async function twak(args: string[]): Promise<string> {
   const { stdout } = await exec("twak", args, {
     shell: process.platform === "win32", // twak es un .cmd shim en Windows
     timeout: 120_000,
+    killSignal: "SIGKILL",
     env: process.env,
   });
   return stdout;
 }
 
-// El CLI imprime una línea humana antes del JSON; recortamos hasta la primera '{'.
+// Extrae el último objeto JSON válido del stdout (tolera warnings antes,
+// texto después y llaves dentro de strings de log).
 function parseJson(stdout: string): Record<string, unknown> {
-  const start = stdout.indexOf("{");
-  if (start === -1) throw new Error(`twak no devolvió JSON: ${stdout.slice(0, 200)}`);
-  return JSON.parse(stdout.slice(start));
+  const candidates: Record<string, unknown>[] = [];
+  for (let i = 0; i < stdout.length; i++) {
+    if (stdout[i] !== "{") continue;
+    let depth = 0;
+    for (let j = i; j < stdout.length; j++) {
+      if (stdout[j] === "{") depth++;
+      else if (stdout[j] === "}") {
+        depth--;
+        if (depth === 0) {
+          try {
+            candidates.push(JSON.parse(stdout.slice(i, j + 1)));
+            i = j;
+          } catch {
+            /* no era JSON completo */
+          }
+          break;
+        }
+      }
+    }
+  }
+  if (!candidates.length) throw new Error(`twak no devolvió JSON: ${stdout.slice(0, 200)}`);
+  return candidates[candidates.length - 1];
+}
+
+// "0.016639407014955634 BNB" -> 0.016639...
+function parseAmount(s: unknown): number | undefined {
+  if (typeof s !== "string") return undefined;
+  const n = parseFloat(s.trim().split(/\s+/)[0]);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+function logPendingReconcile(order: Order, phase: string, error: string): void {
+  try {
+    mkdirSync(join(process.cwd(), "data"), { recursive: true });
+    appendFileSync(
+      RECONCILE_FILE,
+      JSON.stringify({ at: new Date().toISOString(), phase, error: error.slice(0, 300), order }) + "\n",
+    );
+  } catch {
+    /* best effort */
+  }
 }
 
 async function tokenAddress(symbol: string): Promise<string> {
@@ -41,46 +85,74 @@ async function tokenAddress(symbol: string): Promise<string> {
 }
 
 function swapArgs(order: Order, token: string, quoteOnly: boolean): string[] {
-  const args =
-    order.side === "BUY"
-      ? ["swap", "USDT", token, "--usd", order.amountUsd.toFixed(2)]
-      : ["swap", (order.amountUsd / order.priceUsd).toFixed(8), token, "USDT"];
+  let args: string[];
+  if (order.side === "BUY") {
+    args = ["swap", "USDT", token, "--usd", order.amountUsd.toFixed(2)];
+  } else {
+    // Cantidad EXACTA del libro, truncada hacia abajo (auditoría C2: derivar
+    // de amountUsd/price y redondear arriba hacía revertir el swap entero)
+    const rawQty = order.qty ?? order.amountUsd / order.priceUsd;
+    const qty = Math.floor(rawQty * 1e8) / 1e8;
+    args = ["swap", qty.toFixed(8), token, "USDT"];
+  }
   args.push("--chain", "bsc", "--slippage", String(SLIPPAGE_PCT), "--json");
   if (quoteOnly) args.push("--quote-only");
   return args;
 }
 
+function assertOk(result: Record<string, unknown>, context: string): void {
+  if (result.error || result.errorCode) {
+    throw new Error(`twak ${context}: ${String(result.error ?? result.errorCode)}`);
+  }
+}
+
 export const twakExecutor: Executor = {
   name: "twak",
   async execute(order: Order): Promise<Fill> {
-    // 0. Allowlist: solo tokens elegibles de la competición. Guardarraíl a
-    //    nivel de ejecución — aunque la estrategia se equivocara, aquí no pasa.
-    const { config } = await import("../config.js");
-    if (!(order.symbol in config.watchlist)) {
-      throw new Error(`${order.symbol} no está en el allowlist de tokens elegibles — orden rechazada`);
-    }
-
     const token = await tokenAddress(order.symbol);
 
-    // 1. Quote y validación de impacto de precio
+    // 1. Quote y validación de impacto de precio (fase segura: sin tx)
     const quote = parseJson(await twak(swapArgs(order, token, true)));
+    assertOk(quote, "quote");
     const impact = Math.abs(Number(quote.priceImpact ?? 0));
     if (impact > MAX_PRICE_IMPACT_PCT) {
       throw new Error(`Impacto de precio ${impact}% > límite ${MAX_PRICE_IMPACT_PCT}% — swap abortado`);
     }
 
-    // 2. Ejecución real
-    const result = parseJson(await twak(swapArgs(order, token, false)));
-    const txHash = (result.txHash ?? result.hash ?? result.transactionHash) as string | undefined;
+    // 2. Ejecución real (a partir de aquí, cualquier fallo puede haber
+    //    dejado una tx on-chain: se registra para reconciliar)
+    let result: Record<string, unknown>;
+    try {
+      result = parseJson(await twak(swapArgs(order, token, false)));
+      assertOk(result, "swap");
+    } catch (err) {
+      logPendingReconcile(order, "execute", (err as Error).message);
+      throw err;
+    }
 
-    return {
+    const txHash = (result.txHash ?? result.hash ?? result.transactionHash) as string | undefined;
+    if (!txHash) {
+      // Sin txHash no hay prueba de ejecución: NO se contabiliza (auditoría:
+      // antes esto registraba trades fantasma)
+      logPendingReconcile(order, "no-txhash", JSON.stringify(result).slice(0, 200));
+      throw new Error(`twak swap sin txHash — no contabilizado (${JSON.stringify(result).slice(0, 120)})`);
+    }
+
+    // Montos reales del swap para la contabilidad
+    const outAmount = parseAmount(result.output);
+    const fill: Fill = {
       order,
       executedAt: new Date().toISOString(),
       txHash,
-      // El coste real (gas + spread) queda reflejado on-chain; para la
-      // contabilidad local usamos el minReceived del quote como aproximación
-      // conservadora del slippage.
       fee: order.amountUsd * (SLIPPAGE_PCT / 100),
     };
+    if (order.side === "BUY" && outAmount) {
+      fill.actualQty = outAmount; // tokens reales recibidos
+      fill.fee = 0; // el coste real ya está implícito en qty real vs amountUsd
+    } else if (order.side === "SELL" && outAmount) {
+      fill.actualProceedsUsd = outAmount; // USDT reales recibidos
+      fill.fee = 0;
+    }
+    return fill;
   },
 };

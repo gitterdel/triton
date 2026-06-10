@@ -45,8 +45,14 @@ interface FearGreedResponse {
   data: { value: number; value_classification: string };
 }
 
-export async function fetchQuotes(): Promise<TokenSignal[]> {
-  const ids = Object.values(config.watchlist).map((t) => t.id).join(",");
+export async function fetchQuotes(extraSymbols: string[] = []): Promise<TokenSignal[]> {
+  const idSet = new Set(Object.values(config.watchlist).map((t) => t.id));
+  // Posiciones abiertas fuera de la watchlist: sus stops necesitan precio
+  for (const sym of extraSymbols) {
+    const id = config.watchlist[sym]?.id ?? config.knownIds[sym];
+    if (id) idSet.add(id);
+  }
+  const ids = [...idSet].join(",");
   const res = await cmcGet<QuotesResponse>("/v2/cryptocurrency/quotes/latest", { id: ids });
   return Object.values(res.data).map((d) => ({
     symbol: d.symbol,
@@ -81,9 +87,9 @@ export async function fetchTrending(): Promise<string[]> {
   }
 }
 
-export async function fetchMarketContext(): Promise<MarketContext> {
+export async function fetchMarketContext(extraSymbols: string[] = []): Promise<MarketContext> {
   const [signals, fearGreed, trending] = await Promise.all([
-    fetchQuotes(),
+    fetchQuotes(extraSymbols),
     fetchFearGreed(),
     fetchTrending(),
   ]);
