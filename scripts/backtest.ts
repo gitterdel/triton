@@ -135,23 +135,31 @@ async function main(): Promise<void> {
     const high48h: Record<string, number> = {};
     const low48h: Record<string, number> = {};
     const high168h: Record<string, number> = {};
+    const range24hPct: Record<string, number> = {};
     for (const [sym, h] of histories) {
       let hi48 = 0;
       let lo = Infinity;
       let hi168 = 0;
+      let hi24 = 0;
+      let lo24 = Infinity;
       for (let j = Math.max(0, i - 168); j < i; j++) {
         hi168 = Math.max(hi168, h[j].price);
         if (j >= i - 48) {
           hi48 = Math.max(hi48, h[j].price);
           lo = Math.min(lo, h[j].price);
         }
+        if (j >= i - 24) {
+          hi24 = Math.max(hi24, h[j].price);
+          lo24 = Math.min(lo24, h[j].price);
+        }
       }
       high48h[sym] = hi48;
       low48h[sym] = lo;
       high168h[sym] = hi168;
+      range24hPct[sym] = lo24 < Infinity && lo24 > 0 ? ((hi24 - lo24) / lo24) * 100 : 0;
     }
 
-    const ctx: MarketContext = { signals, fearGreedValue: fg, fearGreedLabel: String(fg), trending: [], high48h, low48h, high168h };
+    const ctx: MarketContext = { signals, fearGreedValue: fg, fearGreedLabel: String(fg), trending: [], high48h, low48h, high168h, range24hPct };
 
     const decisions = decide(ctx, portfolio);
     const { orders, blocked } = applyRisk(decisions, portfolio, signals);

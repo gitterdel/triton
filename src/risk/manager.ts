@@ -92,6 +92,23 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
       continue;
     }
 
+    // L-TIME (lab, robada de E0V1E/comunidad): rescate por tiempo — una
+    // posición estancada >N horas sin despegar se cierra; el capital parado
+    // tiene coste de oportunidad y los trades que funcionan lo hacen pronto.
+    const TIME_H = Number(process.env.TEST_TIME_EXIT_H ?? 0); // 0 = apagado
+    const ageH = (Date.parse(sig.timestamp || new Date().toISOString()) - Date.parse(pos.openedAt)) / 3600_000;
+    if (TIME_H > 0 && ageH > TIME_H && change < 0.01 && change > -RISK_LIMITS.stopLossPct) {
+      orders.push({
+        symbol: pos.symbol,
+        side: "SELL",
+        amountUsd: pos.qty * sig.priceUsd,
+        priceUsd: sig.priceUsd,
+        qty: pos.qty,
+        reason: `TIME-EXIT: ${ageH.toFixed(0)}h estancada a ${(change * 100).toFixed(2)}% — rotar capital`,
+      });
+      continue;
+    }
+
     if (change <= -RISK_LIMITS.stopLossPct) {
       orders.push({
         symbol: pos.symbol,

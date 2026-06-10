@@ -19,6 +19,7 @@ export interface MarketContext {
   high48h?: Record<string, number>; // máximo de 48h por símbolo (resistencia corta, para breakouts)
   low48h?: Record<string, number>; // mínimo de 48h por símbolo (soporte, para entradas range)
   high168h?: Record<string, number>; // máximo de 7 días (resistencia semanal: zona de oferta)
+  range24hPct?: Record<string, number>; // rango high/low 24h en % (pump protection)
 }
 
 export type Action = "BUY" | "SELL" | "HOLD";

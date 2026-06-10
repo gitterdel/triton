@@ -118,7 +118,14 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     const underResistance =
       RES_PCT > 0 && hi168 != null && s.priceUsd < hi168 && s.priceUsd > hi168 * (1 - RES_PCT / 100);
 
-    if (score >= buyThreshold && confirmed && !betaBlocked && !overextended && !underResistance && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
+    // PUMP-PROTECTION (ADOPTADA, robada de NostalgiaForInfinity): no comprar
+    // nada cuyo rango high/low 24h supere 35% — el dip de algo que acaba de
+    // hacer x1.35 no es un dip, es la primera pata del desplome. Backtest
+    // neutro pero es airbag real contra los dump-traps de BSC.
+    const PUMP_MAX = Number(process.env.TEST_PUMP_MAX ?? 35);
+    const pumped = PUMP_MAX > 0 && (ctx.range24hPct?.[s.symbol] ?? 0) > PUMP_MAX;
+
+    if (score >= buyThreshold && confirmed && !betaBlocked && !overextended && !underResistance && !pumped && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
       const confidence = Math.min(0.95, 0.5 + (score - buyThreshold) / 10);
       return { symbol: s.symbol, action: "BUY" as const, confidence, reasons, signal: s, strategy: "momentum" as const };
     }

@@ -134,18 +134,24 @@ async function main() {
     const high48h: Record<string, number> = {};
     const low48h: Record<string, number> = {};
     const high168h: Record<string, number> = {};
+    const range24hPct: Record<string, number> = {};
     for (const [sym, c] of series) {
-      let h48 = 0, lo = Infinity, h168 = 0;
+      let h48 = 0, lo = Infinity, h168 = 0, h24 = 0, l24 = Infinity;
       for (let j = i - 168; j < i; j++) {
         h168 = Math.max(h168, c[j].price);
         if (j >= i - 48) {
           h48 = Math.max(h48, c[j].price);
           lo = Math.min(lo, c[j].price);
         }
+        if (j >= i - 24) {
+          h24 = Math.max(h24, c[j].price);
+          l24 = Math.min(l24, c[j].price);
+        }
       }
       high48h[sym] = h48;
       low48h[sym] = lo;
       high168h[sym] = h168;
+      range24hPct[sym] = l24 > 0 && l24 < Infinity ? ((h24 - l24) / l24) * 100 : 0;
     }
     const ctx: MarketContext = {
       signals,
@@ -155,6 +161,7 @@ async function main() {
       high48h,
       low48h,
       high168h,
+      range24hPct,
     };
     const decisions = decide(ctx, portfolio);
     const { orders } = applyRisk(decisions, portfolio, signals);
