@@ -62,7 +62,8 @@ async function main() {
 
   // ---------- B: automation + watcher (el circuito de emergencia) ----------
   hr("B · BUY de la pata del watcher");
-  const buy2Fill = await twakExecutor.execute({ ...buy, reason: "REHEARSAL: pata del watcher" });
+  const buy2: Order = { symbol: SYMBOL, side: "BUY", amountUsd: LEG_USD, priceUsd: 0, reason: "REHEARSAL: pata del watcher" };
+  const buy2Fill = await twakExecutor.execute(buy2);
   const qty2 = buy2Fill.actualQty;
   if (!qty2) throw new Error("BUY2 sin actualQty");
   const entry2 = LEG_USD / qty2;
