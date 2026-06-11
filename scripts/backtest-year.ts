@@ -19,6 +19,10 @@ import type { MarketContext, Portfolio, TokenSignal } from "../src/types.js";
 import { taSnapshot } from "../src/strategy/ta.js";
 
 const DAYS = Number(process.argv[2] ?? 365);
+// Walk-forward: desplaza la ventana N días hacia el pasado (0 = hasta hoy).
+// Permite afinar parámetros en una época y validarlos en otra NO vista.
+const OFFSET = Number(process.env.TEST_WINDOW_OFFSET_DAYS ?? 0);
+const END_MS = Date.now() - OFFSET * 86_400_000;
 const WARMUP = 169;
 const NEED = DAYS * 24 + WARMUP;
 
@@ -29,20 +33,20 @@ interface Candle {
 }
 
 async function fetchBinance(sym: string): Promise<Candle[] | null> {
-  const cache = `data/bn-cache-${sym}-${DAYS}.json`;
+  const cache = OFFSET ? `data/bn-cache-${sym}-${DAYS}-o${OFFSET}.json` : `data/bn-cache-${sym}-${DAYS}.json`;
   if (existsSync(cache) && Date.now() - statSync(cache).mtimeMs < 12 * 3600_000) {
     return JSON.parse(readFileSync(cache, "utf-8"));
   }
   const out: Candle[] = [];
-  let start = Date.now() - NEED * 3600_000;
+  let start = END_MS - NEED * 3600_000;
   try {
-    while (out.length < NEED + 10) {
+    while (out.length < NEED + 10 && start < END_MS) {
       const url = `https://data-api.binance.vision/api/v3/klines?symbol=${sym}USDT&interval=1h&limit=1000&startTime=${start}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
       if (!res.ok) return null;
       const batch = (await res.json()) as any[];
       if (!batch.length) break;
-      for (const k of batch) out.push({ t: k[0], price: +k[4], vol: +k[7] });
+      for (const k of batch) if (k[0] < END_MS) out.push({ t: k[0], price: +k[4], vol: +k[7] });
       start = batch[batch.length - 1][0] + 3600_000;
       if (batch.length < 1000) break;
     }
@@ -58,7 +62,7 @@ async function fetchBinance(sym: string): Promise<Candle[] | null> {
 async function fetchFngHistory(): Promise<Map<string, number>> {
   const map = new Map<string, number>();
   try {
-    const res = await fetch(`https://api.alternative.me/fng/?limit=${DAYS + 10}&format=json`, {
+    const res = await fetch(`https://api.alternative.me/fng/?limit=${DAYS + OFFSET + 10}&format=json`, {
       signal: AbortSignal.timeout(20_000),
     });
     const data = (await res.json()) as { data: { value: string; timestamp: string }[] };
@@ -205,8 +209,11 @@ async function main() {
   const closed = portfolio.history.filter((f) => f.order.side === "SELL");
   const wins = closed.filter((f) => (f.realizedPnlUsd ?? 0) > 0).length;
 
+  const first = [...series.values()][0];
+  const winFrom = new Date(first[WARMUP].t).toISOString().slice(0, 10);
+  const winTo = new Date(first[len - 1].t).toISOString().slice(0, 10);
   console.log("\n========== RESULTADO LARGO PLAZO ==========");
-  console.log(`Período         : ${DAYS} días | tokens: ${[...series.keys()].join(",")}`);
+  console.log(`Período         : ${DAYS} días (${winFrom} → ${winTo}${OFFSET ? `, offset ${OFFSET}d` : ""}) | tokens: ${[...series.keys()].join(",")}`);
   console.log(`Capital         : $${start.toFixed(2)} -> $${final.toFixed(2)} (${((final / start - 1) * 100).toFixed(1)}%)`);
   console.log(`Buy & hold      : ${bh.toFixed(1)}%`);
   console.log(`Max drawdown    : -${(maxDd * 100).toFixed(1)}%`);
