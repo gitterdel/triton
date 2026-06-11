@@ -57,11 +57,17 @@ export const config = {
 };
 
 // Límites duros de riesgo. El RiskManager los aplica SIEMPRE,
-// independientemente de lo que diga la estrategia. No son configurables
-// por env a propósito: cambiarlos exige tocar código y pasar por revisión.
+// independientemente de lo que diga la estrategia. En LIVE no son
+// configurables por env a propósito (cambiarlos exige tocar código y pasar
+// por revisión). En paper/backtest, TEST_MAX_POS y TEST_POS_PCT permiten
+// barrer cupo y talla, acotados a rangos sanos (barrido 11-jun).
+const IS_LIVE = (process.env.EXECUTION_MODE ?? "paper") === "live";
+const labNum = (v: string | undefined, def: number, min: number, max: number) =>
+  IS_LIVE || v == null ? def : Math.min(max, Math.max(min, Number(v) || def));
+
 export const RISK_LIMITS = {
-  maxPositionPctOfPortfolio: 0.2, // ninguna posición > 20% del portfolio
-  maxOpenPositions: 4,
+  maxPositionPctOfPortfolio: labNum(process.env.TEST_POS_PCT, 0.2, 0.05, 0.25), // ninguna posición > 20% del portfolio
+  maxOpenPositions: labNum(process.env.TEST_MAX_POS, 4, 1, 8),
   minTradeUsd: 10,
   maxTradeUsd: 200,
   stopLossPct: 0.05, // cerrar si la posición cae 5% desde la entrada
