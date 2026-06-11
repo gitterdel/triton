@@ -25,11 +25,16 @@ async function twak(args: string[]): Promise<string> {
   return stdout;
 }
 
+// Forma REAL del JSON de `twak automate list` (verificada en el ensayo del
+// 11-jun): los campos son fromToken/toToken/targetPrice — el código anterior
+// buscaba from/to/price, así que el matcher NUNCA encontraba nada: los stops
+// no se borraban al cerrar posición (zombis) y recolocar apilaba duplicados.
 interface Automation {
   id: string;
-  from?: string;
-  to?: string;
-  price?: number;
+  fromToken?: string;
+  toToken?: string;
+  targetPrice?: number;
+  active?: boolean;
 }
 
 async function listAutomations(): Promise<Automation[]> {
@@ -49,11 +54,11 @@ export async function ensureFailsafeStop(symbol: string, qty: number, stopPriceU
   try {
     const address = config.watchlist[symbol]?.address ?? symbol;
     const matches = (a: Automation) =>
-      (a.from?.toLowerCase() === symbol.toLowerCase() || a.from?.toLowerCase() === address.toLowerCase()) &&
-      (a.to ?? "USDT").toUpperCase().includes("USDT");
+      (a.fromToken?.toLowerCase() === symbol.toLowerCase() || a.fromToken?.toLowerCase() === address.toLowerCase()) &&
+      (a.toToken ?? "USDT").toUpperCase().includes("USDT");
     const existing = (await listAutomations()).filter(matches);
-    // Si ya hay un stop al mismo nivel (±0.5%), no tocar
-    if (existing.some((a) => a.price && Math.abs(a.price - stopPriceUsd) / stopPriceUsd < 0.005)) return;
+    // Si ya hay un stop ACTIVO al mismo nivel (±0.5%), no tocar
+    if (existing.some((a) => a.active !== false && a.targetPrice && Math.abs(a.targetPrice - stopPriceUsd) / stopPriceUsd < 0.005)) return;
 
     for (const a of existing) await twak(["automate", "delete", a.id, "--json"]).catch(() => {});
     // Descuento del 0.3% sobre la cantidad del libro (ensayo real 11-jun):
@@ -87,7 +92,7 @@ export async function clearFailsafeStop(symbol: string): Promise<void> {
   try {
     const address = config.watchlist[symbol]?.address ?? symbol;
     const existing = (await listAutomations()).filter(
-      (a) => a.from?.toLowerCase() === symbol.toLowerCase() || a.from?.toLowerCase() === address.toLowerCase(),
+      (a) => a.fromToken?.toLowerCase() === symbol.toLowerCase() || a.fromToken?.toLowerCase() === address.toLowerCase(),
     );
     for (const a of existing) await twak(["automate", "delete", a.id, "--json"]).catch(() => {});
   } catch {
