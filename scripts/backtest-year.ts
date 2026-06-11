@@ -171,7 +171,7 @@ async function main() {
       ta,
     };
     const decisions = decide(ctx, portfolio);
-    const { orders } = applyRisk(decisions, portfolio, signals);
+    const { orders } = applyRisk(decisions, portfolio, signals, ts);
     for (const order of orders) {
       applyFill(portfolio, { order, executedAt: new Date(ts).toISOString(), fee: simulatedFee(order) });
     }

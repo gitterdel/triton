@@ -168,7 +168,7 @@ async function main(): Promise<void> {
     const ctx: MarketContext = { signals, fearGreedValue: fg, fearGreedLabel: String(fg), trending: [], high48h, low48h, high168h, range24hPct, ta };
 
     const decisions = decide(ctx, portfolio);
-    const { orders, blocked } = applyRisk(decisions, portfolio, signals);
+    const { orders, blocked } = applyRisk(decisions, portfolio, signals, ts);
     blockedCount += blocked.length;
 
     for (const order of orders) {

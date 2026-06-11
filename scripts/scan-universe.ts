@@ -116,7 +116,7 @@ function runBot(sym: string, px: number[], vol: number[], fgByDay: Map<string, n
       high48h: { [sym]: hi },
     };
     const decisions = decide(ctx, portfolio);
-    const { orders } = applyRisk(decisions, portfolio, [s]);
+    const { orders } = applyRisk(decisions, portfolio, [s], ts);
     for (const order of orders) {
       applyFill(portfolio, { order, executedAt: new Date(ts).toISOString(), fee: simulatedFee(order) });
     }

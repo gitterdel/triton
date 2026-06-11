@@ -23,7 +23,10 @@ export function portfolioValueUsd(p: Portfolio, signals: TokenSignal[]): number 
 // Aplica los límites duros sobre las decisiones de la estrategia y genera
 // órdenes ejecutables. También emite cierres forzosos por stop-loss/take-profit,
 // que tienen prioridad sobre cualquier señal.
-export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: TokenSignal[]): RiskResult {
+// nowMs: reloj inyectable — en vivo el caller usa el default (Date.now, según
+// auditoría M3: nunca el timestamp de CMC); los backtests pasan su tiempo
+// simulado para que el cooldown exista también dentro de la simulación.
+export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: TokenSignal[], nowMs: number = Date.now()): RiskResult {
   const orders: Order[] = [];
   const blocked: RiskResult["blocked"] = [];
   const totalValue = portfolioValueUsd(portfolio, signals);
@@ -92,6 +95,36 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
       continue;
     }
 
+    // Posiciones BULL (lab): la tendencia se deja correr — stop ancho y
+    // trailing lejano. Las salidas finas del momentum son las que mataban
+    // los bulls (campaña 11-jun: 2000d bot -66% vs B&H +256%). Saltan
+    // también el time-exit: una tendencia puede tardar días en despegar.
+    if (pos.strategy === "bull") {
+      const bullStop = Number(process.env.TEST_BULL_STOP ?? 10) / 100;
+      const bullArm = Number(process.env.TEST_BULL_ARM ?? 5) / 100;
+      const bullTrail = Number(process.env.TEST_BULL_TRAIL ?? 12) / 100;
+      if (change <= -bullStop) {
+        orders.push({
+          symbol: pos.symbol,
+          side: "SELL",
+          amountUsd: pos.qty * sig.priceUsd,
+          priceUsd: sig.priceUsd,
+          qty: pos.qty,
+          reason: `BULL STOP: ${(change * 100).toFixed(2)}% desde entrada ${pos.avgEntryUsd.toFixed(4)} (correa ${-bullStop * 100}%)`,
+        });
+      } else if (peakGain >= bullArm && fromPeak <= -bullTrail) {
+        orders.push({
+          symbol: pos.symbol,
+          side: "SELL",
+          amountUsd: pos.qty * sig.priceUsd,
+          priceUsd: sig.priceUsd,
+          qty: pos.qty,
+          reason: `BULL TRAILING: ${(fromPeak * 100).toFixed(2)}% desde pico ${(pos.peakUsd ?? pos.avgEntryUsd).toFixed(4)} (asegura ${(change * 100).toFixed(2)}%)`,
+        });
+      }
+      continue;
+    }
+
     // L-TIME (lab, robada de E0V1E/comunidad): rescate por tiempo — una
     // posición estancada >N horas sin despegar se cierra; el capital parado
     // tiene coste de oportunidad y los trades que funcionan lo hacen pronto.
@@ -151,14 +184,17 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
       // Reloj propio, no el timestamp de CMC (auditoría M3: un timestamp
       // congelado o malformado rompía el cooldown en ambas direcciones).
       // Las ventas de compliance no disparan cooldown (no son stops reales).
-      const recentLoss = portfolio.history.some(
-        (f) =>
-          f.order.symbol === d.symbol &&
-          f.order.side === "SELL" &&
-          (f.realizedPnlUsd ?? 0) < 0 &&
-          !f.order.reason.startsWith("COMPLIANCE") &&
-          Date.now() - Date.parse(f.executedAt) < 24 * 3600 * 1000,
-      );
+      const COOLDOWN_H = Number(process.env.TEST_COOLDOWN_H ?? 24); // horas; 0 = apagado
+      const recentLoss =
+        COOLDOWN_H > 0 &&
+        portfolio.history.some(
+          (f) =>
+            f.order.symbol === d.symbol &&
+            f.order.side === "SELL" &&
+            (f.realizedPnlUsd ?? 0) < 0 &&
+            !f.order.reason.startsWith("COMPLIANCE") &&
+            nowMs - Date.parse(f.executedAt) < COOLDOWN_H * 3600 * 1000,
+        );
       if (recentLoss) {
         blocked.push({ decision: d, why: "cooldown 24h tras stop-loss en este token" });
         continue;
