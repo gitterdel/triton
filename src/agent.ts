@@ -52,6 +52,16 @@ export async function tick(): Promise<void> {
   const extremes = readRecentExtremes(48);
   ctx.high48h = extremes.highs;
   ctx.low48h = extremes.lows;
+  // PUMP-PROTECTION en vivo (auditoría 11-jun): el veto de rango 24h solo lo
+  // poblaban los backtests — ctx.range24hPct quedaba undefined y el airbag
+  // validado nunca actuaba fuera de simulación. Mismo log de señales.
+  const e24 = readRecentExtremes(24);
+  const range24hPct: Record<string, number> = {};
+  for (const sym of Object.keys(e24.highs)) {
+    const lo = e24.lows[sym];
+    if (lo > 0) range24hPct[sym] = (e24.highs[sym] / lo - 1) * 100;
+  }
+  ctx.range24hPct = range24hPct;
   console.log(`F&G: ${ctx.fearGreedValue} (${ctx.fearGreedLabel}) | ${ctx.signals.length} señales`);
 
   const decisions = decide(ctx, portfolio);

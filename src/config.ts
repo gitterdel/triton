@@ -66,8 +66,11 @@ const labNum = (v: string | undefined, def: number, min: number, max: number) =>
   IS_LIVE || v == null ? def : Math.min(max, Math.max(min, Number(v) || def));
 
 export const RISK_LIMITS = {
-  maxPositionPctOfPortfolio: labNum(process.env.TEST_POS_PCT, 0.2, 0.05, 0.25), // ninguna posición > 20% del portfolio
-  maxOpenPositions: labNum(process.env.TEST_MAX_POS, 4, 1, 8),
+  // 6×15% promovido a default el 11-jun (parrilla de 15 backtests: -2.4% a
+  // 90d vs -6.4% del 4×20, con menos DD; talla pequeña > cupo). Esta línea
+  // ES el cambio revisado que exige el contrato de este bloque.
+  maxPositionPctOfPortfolio: labNum(process.env.TEST_POS_PCT, 0.15, 0.05, 0.25),
+  maxOpenPositions: labNum(process.env.TEST_MAX_POS, 6, 1, 8),
   minTradeUsd: 10,
   maxTradeUsd: 200,
   stopLossPct: 0.05, // cerrar si la posición cae 5% desde la entrada
