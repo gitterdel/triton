@@ -5,3 +5,6 @@ data/
 *.log
 identity/.venv/
 identity/identity.json
+
+# Backups de configuracion (contienen secretos)
+.env.bak*
