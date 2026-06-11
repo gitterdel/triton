@@ -114,6 +114,15 @@ export function writeTickState(
     let stopUsd: number;
     if (p.strategy === "range") {
       stopUsd = p.avgEntryUsd * 0.97;
+    } else if (p.strategy === "bull") {
+      // Correa larga del módulo bull (auditoría 11-jun: el dashboard mostraba
+      // el stop fino del momentum para posiciones cuyo suelo real es BULL_STOP)
+      const stop = Number(process.env.TEST_BULL_STOP ?? 10) / 100;
+      const arm = Number(process.env.TEST_BULL_ARM ?? 5) / 100;
+      const trail = Number(process.env.TEST_BULL_TRAIL ?? 12) / 100;
+      const peak = p.peakUsd ?? p.avgEntryUsd;
+      const armed = (peak - p.avgEntryUsd) / p.avgEntryUsd >= arm;
+      stopUsd = Math.max(p.avgEntryUsd * (1 - stop), armed ? peak * (1 - trail) : 0);
     } else {
       const peak = p.peakUsd ?? p.avgEntryUsd;
       const armed = (peak - p.avgEntryUsd) / p.avgEntryUsd >= RISK_LIMITS.trailingActivationPct;
