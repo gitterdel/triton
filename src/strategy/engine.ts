@@ -68,6 +68,9 @@ function regimeAdjustment(fearGreed: number): { buyThreshold: number; sellThresh
 export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
   const { buyThreshold, sellThreshold } = regimeAdjustment(ctx.fearGreedValue);
   const held = new Set(portfolio.positions.map((p) => p.symbol));
+  // Posiciones BULL: sus salidas las gobierna SOLO el risk manager (trailing
+  // ancho) — la señal de venta del momentum no debe bajarlas del tren.
+  const heldBull = new Set(portfolio.positions.filter((p) => p.strategy === "bull").map((p) => p.symbol));
 
   const trending = new Set(ctx.trending);
   // Salud global del mercado: media del 7d de toda la watchlist
@@ -125,11 +128,37 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     const PUMP_MAX = Number(process.env.TEST_PUMP_MAX ?? 35);
     const pumped = PUMP_MAX > 0 && (ctx.range24hPct?.[s.symbol] ?? 0) > PUMP_MAX;
 
+    // Módulo BULL (lab): seguimiento de tendencia para regímenes alcistas.
+    // Diagnóstico (campaña 11-jun, 2000d: bot -66% vs B&H +256%): en bull el
+    // momentum no entra (exige explosividad que un bull que muele +1%/día no
+    // da) y cuando entra, el trailing fino lo baja del tren en +5%. Aquí se
+    // entra por TENDENCIA SOSTENIDA (7d) y la salida la pone el manager con
+    // correa larga. Va ANTES del momentum para reclamar la entrada con su
+    // perfil de salida cuando el régimen es alcista.
+    if (process.env.TEST_BULL_MODE === "1") {
+      const BULL_FG = Number(process.env.TEST_BULL_FG ?? 55);
+      const BULL_7D = Number(process.env.TEST_BULL_7D ?? 5);
+      const bullRegime = ctx.fearGreedValue >= BULL_FG && marketAvg7d > 0;
+      if (bullRegime && s.percentChange7d >= BULL_7D && s.percentChange24h > 0 && !overextended && !pumped && !held.has(s.symbol)) {
+        return {
+          symbol: s.symbol,
+          action: "BUY" as const,
+          confidence: 0.7,
+          reasons: [
+            `BULL: tendencia 7d +${s.percentChange7d.toFixed(1)}% con mercado alcista (media7d +${marketAvg7d.toFixed(1)}%, F&G ${ctx.fearGreedValue})`,
+            ...reasons.slice(1),
+          ],
+          signal: s,
+          strategy: "bull" as const,
+        };
+      }
+    }
+
     if (score >= buyThreshold && confirmed && !betaBlocked && !overextended && !underResistance && !pumped && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
       const confidence = Math.min(0.95, 0.5 + (score - buyThreshold) / 10);
       return { symbol: s.symbol, action: "BUY" as const, confidence, reasons, signal: s, strategy: "momentum" as const };
     }
-    if (score <= sellThreshold && held.has(s.symbol)) {
+    if (score <= sellThreshold && held.has(s.symbol) && !heldBull.has(s.symbol)) {
       const confidence = Math.min(0.95, 0.5 + (sellThreshold - score) / 10);
       return { symbol: s.symbol, action: "SELL" as const, confidence, reasons, signal: s, strategy: "momentum" as const };
     }

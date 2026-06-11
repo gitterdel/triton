@@ -24,7 +24,7 @@ export interface MarketContext {
 }
 
 export type Action = "BUY" | "SELL" | "HOLD";
-export type StrategyKind = "momentum" | "range" | "breakout";
+export type StrategyKind = "momentum" | "range" | "breakout" | "bull";
 
 export interface Decision {
   symbol: string;
