@@ -56,12 +56,20 @@ export async function ensureFailsafeStop(symbol: string, qty: number, stopPriceU
     if (existing.some((a) => a.price && Math.abs(a.price - stopPriceUsd) / stopPriceUsd < 0.005)) return;
 
     for (const a of existing) await twak(["automate", "delete", a.id, "--json"]).catch(() => {});
+    // Descuento del 0.3% sobre la cantidad del libro (ensayo real 11-jun):
+    // twak reporta en el output del swap ~0.004% MÁS tokens de los que llegan
+    // a la wallet, y la ejecución de automations NO ajusta al balance (el
+    // swap directo sí) — la automation por la cantidad exacta revertía en
+    // cadena con "transfer amount exceeds balance" y el paracaídas nunca
+    // vendía. Verificado on-chain (balanceOf vs output). El polvo restante
+    // (~0.3% de la posición) lo limpia el SELL normal del agente si procede.
+    const amount = Math.floor(qty * 0.997 * 1e8) / 1e8;
     await twak([
       "automate", "add",
       "--from", address,
       "--to", "USDT",
       "--chain", "bsc",
-      "--amount", qty.toFixed(8),
+      "--amount", amount.toFixed(8),
       "--price", stopPriceUsd.toFixed(6),
       "--condition", "below",
       "--max-runs", "1",

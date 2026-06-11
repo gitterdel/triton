@@ -38,22 +38,27 @@ async function main() {
   console.log(`ENSAYO DE EJECUCIÓN REAL · ${new Date().toISOString()} · ${SYMBOL} · ~$${LEG_USD}/pata`);
   const t0 = Date.now();
 
-  // ---------- A: ida y vuelta por el camino del agente ----------
-  hr("A · BUY real vía twakExecutor (quote + impacto + swap)");
-  const buy: Order = { symbol: SYMBOL, side: "BUY", amountUsd: LEG_USD, priceUsd: 0, reason: "REHEARSAL: pata de ida" };
-  const buyFill = await twakExecutor.execute(buy);
-  const qty = buyFill.actualQty;
-  if (!qty) throw new Error("BUY sin actualQty — revisar output de twak");
-  const entryPx = LEG_USD / qty;
-  console.log(`  ✅ BUY ok · tx=${buyFill.txHash} · qty=${qty} · precio implícito=$${entryPx.toFixed(2)}`);
+  let rtCostPct = NaN;
+  if (process.env.REHEARSAL_SKIP_A !== "1") {
+    // ---------- A: ida y vuelta por el camino del agente ----------
+    hr("A · BUY real vía twakExecutor (quote + impacto + swap)");
+    const buy: Order = { symbol: SYMBOL, side: "BUY", amountUsd: LEG_USD, priceUsd: 0, reason: "REHEARSAL: pata de ida" };
+    const buyFill = await twakExecutor.execute(buy);
+    const qty = buyFill.actualQty;
+    if (!qty) throw new Error("BUY sin actualQty — revisar output de twak");
+    const entryPx = LEG_USD / qty;
+    console.log(`  ✅ BUY ok · tx=${buyFill.txHash} · qty=${qty} · precio implícito=$${entryPx.toFixed(2)}`);
 
-  hr("A · SELL real de la misma cantidad");
-  const sell: Order = { symbol: SYMBOL, side: "SELL", amountUsd: qty * entryPx, priceUsd: entryPx, qty, reason: "REHEARSAL: pata de vuelta" };
-  const sellFill = await twakExecutor.execute(sell);
-  const got = sellFill.actualProceedsUsd ?? NaN;
-  const rtCostPct = ((LEG_USD - got) / LEG_USD) * 100;
-  console.log(`  ✅ SELL ok · tx=${sellFill.txHash} · USDT recibidos=${got.toFixed(4)}`);
-  console.log(`  📊 Coste real ida+vuelta: ${rtCostPct.toFixed(3)}% (fees+slippage+spread reales)`);
+    hr("A · SELL real de la misma cantidad");
+    const sell: Order = { symbol: SYMBOL, side: "SELL", amountUsd: qty * entryPx, priceUsd: entryPx, qty, reason: "REHEARSAL: pata de vuelta" };
+    const sellFill = await twakExecutor.execute(sell);
+    const got = sellFill.actualProceedsUsd ?? NaN;
+    rtCostPct = ((LEG_USD - got) / LEG_USD) * 100;
+    console.log(`  ✅ SELL ok · tx=${sellFill.txHash} · USDT recibidos=${got.toFixed(4)}`);
+    console.log(`  📊 Coste real ida+vuelta: ${rtCostPct.toFixed(3)}% (fees+slippage+spread reales)`);
+  } else {
+    hr("A · SALTADA (REHEARSAL_SKIP_A=1) — solo se re-valida el circuito de emergencia");
+  }
 
   // ---------- B: automation + watcher (el circuito de emergencia) ----------
   hr("B · BUY de la pata del watcher");
