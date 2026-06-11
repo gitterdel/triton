@@ -5,6 +5,34 @@ import type { RiskResult } from "../risk/manager.js";
 import { RISK_LIMITS, config } from "../config.js";
 import { STRATEGY_PARAMS } from "../strategy/engine.js";
 
+// Los TEST_* del laboratorio sobreescriben parámetros en runtime: la
+// telemetría (y el DISCLOSE_PARAMS que verán los jueces desde el 20-21)
+// debe publicar los valores EFECTIVOS, no los defaults compilados.
+function effectiveStrategyParams(): typeof STRATEGY_PARAMS {
+  const p: typeof STRATEGY_PARAMS = JSON.parse(JSON.stringify(STRATEGY_PARAMS));
+  p.regimes.fear.buyThreshold = Number(process.env.TEST_FEAR_TH ?? p.regimes.fear.buyThreshold);
+  p.regimes.neutral.buyThreshold = Number(process.env.TEST_NEUTRAL_TH ?? p.regimes.neutral.buyThreshold);
+  p.maxEntry1hPct = Number(process.env.TEST_MAX_1H ?? p.maxEntry1hPct);
+  return p;
+}
+function effectiveLabs(): Record<string, number | boolean> {
+  const labs: Record<string, number | boolean> = {
+    early_vol: process.env.TEST_EARLY_VOL === "1",
+    vol_sizing: process.env.TEST_VOL_SIZING === "1",
+    cooldown_h: Number(process.env.TEST_COOLDOWN_H ?? 24),
+    time_exit_h: Number(process.env.TEST_TIME_EXIT_H ?? 0),
+    bull_mode: process.env.TEST_BULL_MODE === "1",
+  };
+  if (labs.bull_mode) {
+    labs.bull_fg = Number(process.env.TEST_BULL_FG ?? 55);
+    labs.bull_7d_min = Number(process.env.TEST_BULL_7D ?? 5);
+    labs.bull_stop_pct = Number(process.env.TEST_BULL_STOP ?? 10);
+    labs.bull_arm_pct = Number(process.env.TEST_BULL_ARM ?? 5);
+    labs.bull_trail_pct = Number(process.env.TEST_BULL_TRAIL ?? 12);
+  }
+  return labs;
+}
+
 const STATE_FILE = join(process.cwd(), "data", "state.json");
 const EQUITY_FILE = join(process.cwd(), "data", "equity.json");
 const SIGNALS_LOG = join(process.cwd(), "data", "signals-log.jsonl");
@@ -54,6 +82,7 @@ export interface TickState {
   params: {
     strategy: typeof STRATEGY_PARAMS;
     risk: typeof RISK_LIMITS;
+    labs?: Record<string, number | boolean>;
     ops: { tickSeconds: number; fastCheckSeconds: number; watchlist: string[]; complianceTradeUsd: number };
   };
   intel?: import("../signals/intel.js").Intel | null;
@@ -162,8 +191,9 @@ export function writeTickState(
       profitFactor: grossLoss > 0 ? grossWin / grossLoss : null,
     },
     params: {
-      strategy: STRATEGY_PARAMS,
+      strategy: effectiveStrategyParams(),
       risk: RISK_LIMITS,
+      labs: effectiveLabs(),
       ops: {
         tickSeconds: config.tickIntervalSeconds,
         fastCheckSeconds: config.fastCheckSeconds,

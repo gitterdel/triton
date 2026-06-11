@@ -96,6 +96,20 @@ const FAILSAFE_MARGIN = 0.98;
 
 export function stopPriceFor(avgEntryUsd: number, peakUsd: number | undefined, strategy?: string): number {
   if (strategy === "range") return avgEntryUsd * 0.97 * FAILSAFE_MARGIN;
+  // Posiciones BULL: correa larga propia (auditoría 11-jun: sin esta rama,
+  // el failsafe usaba el stop fino del 5% y habría estrangulado en live una
+  // estrategia cuyo stop real es BULL_STOP — el paracaídas iba POR ENCIMA
+  // del suelo del agente). Espeja los mismos knobs que el risk manager.
+  if (strategy === "bull") {
+    const stop = Number(process.env.TEST_BULL_STOP ?? 10) / 100;
+    const arm = Number(process.env.TEST_BULL_ARM ?? 5) / 100;
+    const trail = Number(process.env.TEST_BULL_TRAIL ?? 12) / 100;
+    const hardStop = avgEntryUsd * (1 - stop);
+    const peak = peakUsd ?? avgEntryUsd;
+    const armed = (peak - avgEntryUsd) / avgEntryUsd >= arm;
+    const trailStop = armed ? peak * (1 - trail) : 0;
+    return Math.max(hardStop, trailStop) * FAILSAFE_MARGIN;
+  }
   const hardStop = avgEntryUsd * (1 - RISK_LIMITS.stopLossPct);
   const peak = peakUsd ?? avgEntryUsd;
   const armed = (peak - avgEntryUsd) / avgEntryUsd >= RISK_LIMITS.trailingActivationPct;

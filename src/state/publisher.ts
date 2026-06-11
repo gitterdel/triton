@@ -26,6 +26,7 @@ function redactForPublic(state: TickState | null): TickState | null {
     volumeBoost: { threshold: NaN, up: NaN, down: NaN },
     maxEntry1hPct: NaN,
   };
+  delete s.params.labs; // los flags del laboratorio también son receta
   for (const d of s.decisions) {
     d.reasons = d.reasons.map((r) =>
       r
