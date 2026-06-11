@@ -164,6 +164,13 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
   }
   const forcedSells = new Set(orders.map((o) => o.symbol));
 
+  // Contadores de trabajo (auditoría 11-jun): los límites se validaban sobre
+  // el snapshot del portfolio, así que VARIOS BUY aceptados en el mismo tick
+  // podían superar maxOpenPositions y dejar el cash en negativo (escenario
+  // probable en modo bull: muchos tokens tendencian a la vez).
+  let openCount = portfolio.positions.length;
+  let cashLeft = portfolio.cashUsd;
+
   // 3. Señales de la estrategia
   for (const d of decisions) {
     if (d.action === "HOLD") continue;
@@ -199,7 +206,7 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
         blocked.push({ decision: d, why: "cooldown 24h tras stop-loss en este token" });
         continue;
       }
-      if (portfolio.positions.length >= RISK_LIMITS.maxOpenPositions) {
+      if (openCount >= RISK_LIMITS.maxOpenPositions) {
         blocked.push({ decision: d, why: `máximo de posiciones abiertas (${RISK_LIMITS.maxOpenPositions})` });
         continue;
       }
@@ -210,11 +217,13 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
       if (process.env.TEST_VOL_SIZING === "1") {
         sizeFactor *= Math.min(1, Math.max(0.4, 4 / Math.max(1, Math.abs(d.signal.percentChange24h))));
       }
-      const amountUsd = Math.min(RISK_LIMITS.maxTradeUsd * sizeFactor, maxByPct * sizeFactor, portfolio.cashUsd * 0.95);
+      const amountUsd = Math.min(RISK_LIMITS.maxTradeUsd * sizeFactor, maxByPct * sizeFactor, cashLeft * 0.95);
       if (amountUsd < RISK_LIMITS.minTradeUsd) {
         blocked.push({ decision: d, why: `importe ${amountUsd.toFixed(2)} USD < mínimo ${RISK_LIMITS.minTradeUsd}` });
         continue;
       }
+      openCount++;
+      cashLeft -= amountUsd;
       orders.push({
         symbol: d.symbol,
         side: "BUY",

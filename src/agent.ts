@@ -272,6 +272,12 @@ async function ensureDailyCompliance(
     const pos = portfolio.positions.find((p) => p.symbol === order.symbol);
     if (pos) await ensureFailsafeStop(pos.symbol, pos.qty, stopPriceFor(pos.avgEntryUsd, pos.peakUsd, pos.strategy));
   }
+  // Y el cierre de compliance retira el paracaídas (auditoría 11-jun: sin
+  // esto quedaba una automation huérfana que vendería al instante una
+  // posición futura del mismo token)
+  if (config.executionMode === "live" && order.side === "SELL") {
+    await clearFailsafeStop(order.symbol);
+  }
   console.log(`  📋 COMPLIANCE ${order.side} ${order.symbol} $${order.amountUsd.toFixed(2)}`);
   return {
     side: order.side,
