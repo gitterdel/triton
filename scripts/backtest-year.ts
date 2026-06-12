@@ -158,6 +158,7 @@ async function main() {
       high168h[sym] = h168;
       range24hPct[sym] = l24 > 0 && l24 < Infinity ? ((h24 - l24) / l24) * 100 : 0;
     }
+    for (const s of signals) s.range24hPct = range24hPct[s.symbol]; // H8/H9 adaptativos
     const ta: NonNullable<MarketContext["ta"]> = {};
     for (const [sym, c] of series) {
       const t = taSnapshot(c.slice(Math.max(0, i - 25), i).map((p) => p.price));

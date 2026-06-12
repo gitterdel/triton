@@ -142,16 +142,30 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
       continue;
     }
 
-    if (change <= -RISK_LIMITS.stopLossPct) {
+    // H9 (lab): salidas adaptativas a la volatilidad (estilo ATR) — el stop
+    // fijo es ancho en calma y un suspiro en días violentos (saca por ruido).
+    // TEST_ATR_EXITS = factor sobre el rango 24h del token (stop = rango×F,
+    // acotado 3–10%; trailing y armado escalan en proporción). 0 = apagado.
+    const ATR_F = Number(process.env.TEST_ATR_EXITS ?? 0);
+    let stopPct = RISK_LIMITS.stopLossPct;
+    let trailPct = RISK_LIMITS.trailingStopPct;
+    let armPct = RISK_LIMITS.trailingActivationPct;
+    if (ATR_F > 0 && sig.range24hPct && sig.range24hPct > 0) {
+      stopPct = Math.min(0.1, Math.max(0.03, (sig.range24hPct / 100) * ATR_F));
+      trailPct = stopPct * 0.8;
+      armPct = stopPct * 0.6;
+    }
+
+    if (change <= -stopPct) {
       orders.push({
         symbol: pos.symbol,
         side: "SELL",
         amountUsd: pos.qty * sig.priceUsd,
         priceUsd: sig.priceUsd,
         qty: pos.qty,
-        reason: `STOP-LOSS: ${(change * 100).toFixed(2)}% desde entrada ${pos.avgEntryUsd.toFixed(4)}`,
+        reason: `STOP-LOSS: ${(change * 100).toFixed(2)}% desde entrada ${pos.avgEntryUsd.toFixed(4)}${ATR_F > 0 ? ` (stop adaptativo ${(stopPct * 100).toFixed(1)}%)` : ""}`,
       });
-    } else if (peakGain >= RISK_LIMITS.trailingActivationPct && fromPeak <= -RISK_LIMITS.trailingStopPct) {
+    } else if (peakGain >= armPct && fromPeak <= -trailPct) {
       orders.push({
         symbol: pos.symbol,
         side: "SELL",

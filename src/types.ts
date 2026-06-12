@@ -9,6 +9,7 @@ export interface TokenSignal {
   volumeChange24h: number;
   marketCap: number;
   timestamp: string;
+  range24hPct?: number; // rango high/low 24h en % (volatilidad realizada; para H8/H9 adaptativos)
 }
 
 export interface MarketContext {

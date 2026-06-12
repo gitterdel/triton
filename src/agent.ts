@@ -62,6 +62,7 @@ export async function tick(): Promise<void> {
     if (lo > 0) range24hPct[sym] = (e24.highs[sym] / lo - 1) * 100;
   }
   ctx.range24hPct = range24hPct;
+  for (const s of ctx.signals) s.range24hPct = range24hPct[s.symbol]; // H8/H9 adaptativos
   console.log(`F&G: ${ctx.fearGreedValue} (${ctx.fearGreedLabel}) | ${ctx.signals.length} señales`);
 
   const decisions = decide(ctx, portfolio);

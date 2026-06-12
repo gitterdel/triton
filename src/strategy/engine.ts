@@ -154,8 +154,18 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
       }
     }
 
-    if (score >= buyThreshold && confirmed && !betaBlocked && !overextended && !underResistance && !pumped && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
-      const confidence = Math.min(0.95, 0.5 + (score - buyThreshold) / 10);
+    // H8 (lab): umbral adaptativo a la volatilidad — un umbral fijo significa
+    // cosas distintas según el pulso del día. TEST_ADAPTIVE_TH = rango 24h
+    // "pivote" en % (el umbral escala rango/pivote, acotado 0.6–1.8×); 0 = off.
+    const ADAPT = Number(process.env.TEST_ADAPTIVE_TH ?? 0);
+    let effBuyTh = buyThreshold;
+    if (ADAPT > 0) {
+      const rng = ctx.range24hPct?.[s.symbol];
+      if (rng != null && rng > 0) effBuyTh = buyThreshold * Math.min(1.8, Math.max(0.6, rng / ADAPT));
+    }
+
+    if (score >= effBuyTh && confirmed && !betaBlocked && !overextended && !underResistance && !pumped && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
+      const confidence = Math.min(0.95, 0.5 + (score - effBuyTh) / 10);
       return { symbol: s.symbol, action: "BUY" as const, confidence, reasons, signal: s, strategy: "momentum" as const };
     }
     if (score <= sellThreshold && held.has(s.symbol) && !heldBull.has(s.symbol)) {
