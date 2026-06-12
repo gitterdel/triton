@@ -97,26 +97,30 @@ export function applyFill(p: Portfolio, fill: Fill): void {
     fill.realizedPnlUsd = pnl;
 
     // Diario de operaciones: expediente completo de cada trade cerrado,
-    // para la autopsia sistemática entrada-por-entrada
+    // para la autopsia sistemática entrada-por-entrada.
+    // TRITON_BACKTEST=1 (lo ponen los harnesses) lo silencia: el journal es
+    // el expediente del agente REAL — 92k líneas simuladas lo inutilizaban.
     const holdH = (Date.parse(fill.executedAt) - Date.parse(pos.openedAt)) / 3600_000;
-    appendFileSync(
-      join(process.cwd(), "data", "trade-journal.jsonl"),
-      JSON.stringify({
-        symbol: order.symbol,
-        strategy: pos.strategy ?? "momentum",
-        entryAt: pos.openedAt,
-        entryPx: pos.avgEntryUsd,
-        entryWhy: pos.entryReason ?? "",
-        peakPx: pos.peakUsd,
-        maxGainPct: pos.peakUsd ? ((pos.peakUsd - pos.avgEntryUsd) / pos.avgEntryUsd) * 100 : 0,
-        exitAt: fill.executedAt,
-        exitPx: order.priceUsd,
-        exitWhy: order.reason,
-        holdHours: Math.round(holdH * 10) / 10,
-        pnlUsd: Math.round(pnl * 100) / 100,
-        pnlPct: Math.round(((order.priceUsd - pos.avgEntryUsd) / pos.avgEntryUsd) * 10000) / 100,
-      }) + "\n",
-    );
+    if (process.env.TRITON_BACKTEST !== "1") {
+      appendFileSync(
+        join(process.cwd(), "data", "trade-journal.jsonl"),
+        JSON.stringify({
+          symbol: order.symbol,
+          strategy: pos.strategy ?? "momentum",
+          entryAt: pos.openedAt,
+          entryPx: pos.avgEntryUsd,
+          entryWhy: pos.entryReason ?? "",
+          peakPx: pos.peakUsd,
+          maxGainPct: pos.peakUsd ? ((pos.peakUsd - pos.avgEntryUsd) / pos.avgEntryUsd) * 100 : 0,
+          exitAt: fill.executedAt,
+          exitPx: order.priceUsd,
+          exitWhy: order.reason,
+          holdHours: Math.round(holdH * 10) / 10,
+          pnlUsd: Math.round(pnl * 100) / 100,
+          pnlPct: Math.round(((order.priceUsd - pos.avgEntryUsd) / pos.avgEntryUsd) * 10000) / 100,
+        }) + "\n",
+      );
+    }
 
     p.positions = p.positions.filter((x) => x.symbol !== order.symbol);
   }

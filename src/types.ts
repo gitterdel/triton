@@ -23,6 +23,7 @@ export interface MarketContext {
   high168h?: Record<string, number>; // máximo de 7 días (resistencia semanal: zona de oferta)
   range24hPct?: Record<string, number>; // rango high/low 24h en % (pump protection)
   donchianHighUsd?: Record<string, number>; // máximo de N días (TEST_DONCHIAN; solo con ventana completa)
+  marketAvg7d?: number; // override de salud de mercado para harnesses de token único (scan-universe: cesta BTC/ETH/BNB en vez de mercado=token)
   ta?: Record<string, import("./strategy/ta.js").TaSnapshot>; // indicadores 1h (módulo DIP)
 }
 
@@ -64,6 +65,7 @@ export interface Position {
   avgEntryUsd: number;
   openedAt: string;
   peakUsd?: number; // máximo visto desde la entrada (para el trailing stop)
+  pendingPeakUsd?: number; // pico candidato en cuarentena (anti-spike: saltos >5% exigen 2 lecturas)
   strategy?: StrategyKind; // determina el perfil de salida (momentum: trailing; range: target fijo)
   entryReason?: string; // contexto de la entrada (para el diario de operaciones)
 }

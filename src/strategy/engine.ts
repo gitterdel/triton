@@ -73,8 +73,10 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
   const heldBull = new Set(portfolio.positions.filter((p) => p.strategy === "bull").map((p) => p.symbol));
 
   const trending = new Set(ctx.trending);
-  // Salud global del mercado: media del 7d de toda la watchlist
-  const marketAvg7d = ctx.signals.reduce((sum, x) => sum + x.percentChange7d, 0) / (ctx.signals.length || 1);
+  // Salud global del mercado: media del 7d de toda la watchlist. Los
+  // harnesses de token único (scan-universe) inyectan un override con una
+  // cesta de majors — sin él, "mercado" sería el propio token (worklist 5).
+  const marketAvg7d = ctx.marketAvg7d ?? ctx.signals.reduce((sum, x) => sum + x.percentChange7d, 0) / (ctx.signals.length || 1);
   // TEST filtro de líderes: media 24h del mercado (BTC/ETH mandan: si el
   // mercado cae hoy, la fuerza individual de una alt suele ser arrastrada)
   const marketAvg24h = ctx.signals.reduce((sum, x) => sum + x.percentChange24h, 0) / (ctx.signals.length || 1);

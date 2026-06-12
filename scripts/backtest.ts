@@ -8,6 +8,9 @@
  * decide() + applyRisk() + applyFill(). Lo Ãºnico simulado es el feed.
  */
 import "dotenv/config";
+
+// Identidad de harness: silencia el trade-journal del agente real (worklist 6)
+process.env.TRITON_BACKTEST = "1";
 import { config, RISK_LIMITS } from "../src/config.js";
 import { decide } from "../src/strategy/engine.js";
 import { applyRisk } from "../src/risk/manager.js";

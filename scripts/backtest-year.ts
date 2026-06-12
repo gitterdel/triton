@@ -10,6 +10,9 @@
  * Uso: npx tsx scripts/backtest-year.ts [días]   (default 365)
  */
 import "dotenv/config";
+
+// Identidad de harness: silencia el trade-journal del agente real (worklist 6)
+process.env.TRITON_BACKTEST = "1";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { config } from "../src/config.js";
 import { decide } from "../src/strategy/engine.js";
@@ -60,17 +63,29 @@ async function fetchBinance(sym: string): Promise<Candle[] | null> {
 }
 
 async function fetchFngHistory(): Promise<Map<string, number>> {
-  const map = new Map<string, number>();
-  try {
-    const res = await fetch(`https://api.alternative.me/fng/?limit=${DAYS + OFFSET + 10}&format=json`, {
-      signal: AbortSignal.timeout(20_000),
-    });
-    const data = (await res.json()) as { data: { value: string; timestamp: string }[] };
-    for (const d of data.data) {
-      map.set(new Date(Number(d.timestamp) * 1000).toISOString().slice(0, 10), Number(d.value));
+  // Worklist 4: serie COMPLETA con caché en disco (12h) y fallback a caché
+  // vieja — el fallback silencioso a 50 enmascaraba huecos de cobertura.
+  const cacheF = "data/fng-cache.json";
+  let rows: { value: string; timestamp: string }[] | null = null;
+  if (existsSync(cacheF) && Date.now() - statSync(cacheF).mtimeMs < 12 * 3600_000) {
+    rows = JSON.parse(readFileSync(cacheF, "utf-8"));
+  } else {
+    try {
+      const res = await fetch(`https://api.alternative.me/fng/?limit=0&format=json`, {
+        signal: AbortSignal.timeout(20_000),
+      });
+      const data = (await res.json()) as { data: { value: string; timestamp: string }[] };
+      rows = data.data;
+      mkdirSync("data", { recursive: true });
+      writeFileSync(cacheF, JSON.stringify(rows));
+    } catch {
+      rows = existsSync(cacheF) ? JSON.parse(readFileSync(cacheF, "utf-8")) : null;
+      console.warn(rows ? "F&G API caída — usando caché vieja" : "F&G no disponible (ni caché) — todo el período usará 50");
     }
-  } catch {
-    console.warn("F&G alternative.me no disponible — usando 50");
+  }
+  const map = new Map<string, number>();
+  for (const d of rows ?? []) {
+    map.set(new Date(Number(d.timestamp) * 1000).toISOString().slice(0, 10), Number(d.value));
   }
   return map;
 }
@@ -95,7 +110,30 @@ async function main() {
     console.log(`  ${sym}: ${s.length} velas`);
   }
   const fng = await fetchFngHistory();
+
+  // Alineación por TIMESTAMP (worklist 4): con históricos de longitud
+  // desigual, indexar todos por i desfasaba a los tokens cortos (suite
+  // 2000d: CAKE +69d, TWT +46d). Se recorta el arranque de todas las series
+  // al inicio común más tardío y se verifica la rejilla horaria.
+  const maxStart = Math.max(...[...series.values()].map((s) => s[0].t));
+  for (const [sym, s] of series) {
+    const k = s.findIndex((c) => c.t >= maxStart);
+    if (k > 0) {
+      series.set(sym, s.slice(k));
+      console.log(`  ${sym}: recortadas ${k} velas iniciales para alinear (${(k / 24).toFixed(0)}d)`);
+    }
+  }
   const len = Math.min(...[...series.values()].map((s) => s.length));
+  const ref = [...series.values()][0];
+  for (const [sym, s] of series) {
+    for (const i of [0, len >> 1, len - 1]) {
+      if (s[i].t !== ref[i].t) {
+        console.warn(`  ⚠️ ${sym}: rejilla horaria desalineada en i=${i} (huecos en el histórico) — resultados sospechosos`);
+        break;
+      }
+    }
+  }
+  const fngMiss = new Set<string>();
 
   const portfolio: Portfolio = {
     cashUsd: config.paperStartingUsd,
@@ -132,6 +170,7 @@ async function main() {
       });
     }
     const day = new Date(ts).toISOString().slice(0, 10);
+    if (!fng.has(day)) fngMiss.add(day);
     if (portfolio.dailyPnlDate !== day) {
       portfolio.dailyPnlDate = day;
       portfolio.dailyPnlUsd = 0;
@@ -231,6 +270,8 @@ async function main() {
   const winTo = new Date(first[len - 1].t).toISOString().slice(0, 10);
   console.log("\n========== RESULTADO LARGO PLAZO ==========");
   console.log(`Período         : ${DAYS} días (${winFrom} → ${winTo}${OFFSET ? `, offset ${OFFSET}d` : ""}) | tokens: ${[...series.keys()].join(",")}`);
+  if (fngMiss.size > 0)
+    console.log(`⚠️ F&G sin dato  : ${fngMiss.size} días del período usaron 50 (cobertura ${(100 - (fngMiss.size / (DAYS || 1)) * 100).toFixed(1)}%)`);
   console.log(`Capital         : $${start.toFixed(2)} -> $${final.toFixed(2)} (${((final / start - 1) * 100).toFixed(1)}%)`);
   console.log(`Buy & hold      : ${bh.toFixed(1)}%`);
   console.log(`Max drawdown    : -${(maxDd * 100).toFixed(1)}%`);

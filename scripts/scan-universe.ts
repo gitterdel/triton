@@ -8,6 +8,9 @@
  * Uso: npx tsx scripts/scan-universe.ts
  */
 import "dotenv/config";
+
+// Identidad de harness: silencia el trade-journal del agente real (worklist 6)
+process.env.TRITON_BACKTEST = "1";
 import { writeFileSync, mkdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { config } from "../src/config.js";
 import { decide } from "../src/strategy/engine.js";
@@ -75,7 +78,7 @@ async function fgHistory(): Promise<Map<string, number>> {
   return map;
 }
 
-function runBot(sym: string, px: number[], vol: number[], fgByDay: Map<string, number>, t0: number) {
+function runBot(sym: string, px: number[], vol: number[], fgByDay: Map<string, number>, t0: number, mkt7d: number[]) {
   const portfolio: Portfolio = {
     cashUsd: config.paperStartingUsd,
     positions: [],
@@ -106,14 +109,29 @@ function runBot(sym: string, px: number[], vol: number[], fgByDay: Map<string, n
       marketCap: 0,
       timestamp: new Date(ts).toISOString(),
     };
-    let hi = 0;
-    for (let j = Math.max(0, i - 48); j < i; j++) hi = Math.max(hi, px[j]);
+    // Contexto COMPLETO (worklist 5): antes faltaban low48h (puerta de
+    // soporte H6 abierta de par en par), range24hPct (pump-protection
+    // INERTE) y high168h — el scan corría un motor distinto al real.
+    let hi48 = 0, lo48 = Infinity, hi168 = 0, h24 = 0, l24 = Infinity;
+    for (let j = Math.max(0, i - 168); j < i; j++) {
+      hi168 = Math.max(hi168, px[j]);
+      if (j >= i - 48) { hi48 = Math.max(hi48, px[j]); lo48 = Math.min(lo48, px[j]); }
+      if (j >= i - 24) { h24 = Math.max(h24, px[j]); l24 = Math.min(l24, px[j]); }
+    }
+    const range24 = l24 > 0 && l24 < Infinity ? ((h24 - l24) / l24) * 100 : 0;
+    s.range24hPct = range24;
     const ctx: MarketContext = {
       signals: [s],
       fearGreedValue: fgByDay.get(day) ?? 50,
       fearGreedLabel: "",
       trending: [],
-      high48h: { [sym]: hi },
+      high48h: { [sym]: hi48 },
+      low48h: { [sym]: lo48 === Infinity ? 0 : lo48 },
+      high168h: { [sym]: hi168 },
+      range24hPct: { [sym]: range24 },
+      // Salud de mercado REAL (cesta BTC/ETH/BNB) — sin esto, "mercado" era
+      // el propio token y un candidato bombeando parecía un mercado sano.
+      marketAvg7d: mkt7d[Math.min(i, mkt7d.length - 1)],
     };
     const decisions = decide(ctx, portfolio);
     const { orders } = applyRisk(decisions, portfolio, [s], ts);
@@ -154,11 +172,25 @@ async function main() {
   const fgByDay = await fgHistory();
   const t0 = Date.now() - HOURS * 3600_000;
 
+  // Cesta de majors (BTC/ETH/BNB) como referencia de salud de mercado
+  // (worklist 5): media 7d por índice horario, compartida por todos los runs.
+  const majors = [1, 1027, 1839]; // ids CMC: BTC, ETH, BNB
+  const majorSeries = (await Promise.all(majors.map((id) => history(id)))).filter(Boolean) as { px: number[] }[];
+  if (!majorSeries.length) throw new Error("Sin datos de majors para la referencia de mercado");
+  const mktLen = Math.min(...majorSeries.map((m) => m.px.length));
+  const mkt7d: number[] = new Array(mktLen).fill(0);
+  for (let i = 168; i < mktLen; i++) {
+    let sum = 0;
+    for (const m of majorSeries) sum += (m.px[i] / m.px[i - 168] - 1) * 100;
+    mkt7d[i] = sum / majorSeries.length;
+  }
+  console.log(`Referencia de mercado: ${majorSeries.length} majors, 7d actual ${mkt7d[mktLen - 1].toFixed(1)}%`);
+
   const results: Record<string, any> = {};
   for (const c of candidates) {
     const h = await history(c.id);
     if (!h || h.px.length < WARMUP + 50) continue;
-    const r = runBot(c.sym, h.px, h.vol, fgByDay, t0);
+    const r = runBot(c.sym, h.px, h.vol, fgByDay, t0, mkt7d);
     results[c.sym] = r;
     console.log(
       `  ${c.sym.padEnd(9)} bot ${r.ret >= 0 ? "+" : ""}${r.ret.toFixed(1)}% (B&H ${r.bh >= 0 ? "+" : ""}${r.bh.toFixed(1)}%) DD -${r.dd.toFixed(1)}% trades ${r.trades}${r.wr != null ? " WR " + r.wr.toFixed(0) + "%" : ""}`,

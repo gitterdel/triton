@@ -67,10 +67,22 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
     if (!sig) continue;
 
     // Actualizar máximo visto (se persiste al guardar el portfolio).
-    // Guarda anti-spike (auditoría B3): un print basura de la API (+25% en un
-    // tick) no debe armar el trailing sobre un pico fantasma.
+    // Guarda anti-spike (auditoría B3 + worklist 3, 12-jun): un print basura
+    // no debe armar el trailing sobre un pico fantasma. Saltos de pico >5%
+    // exigen DOS lecturas consecutivas (el fantasma no repite; al confirmar
+    // se toma la MENOR de las dos). Sustituye el gate 1.25, que dejaba pasar
+    // fantasmas de +13..25% y congelaba PARA SIEMPRE los reales >25%.
     const prevPeak = pos.peakUsd ?? pos.avgEntryUsd;
-    pos.peakUsd = sig.priceUsd <= prevPeak * 1.25 ? Math.max(prevPeak, sig.priceUsd) : prevPeak;
+    if (sig.priceUsd <= prevPeak * 1.05) {
+      pos.peakUsd = Math.max(prevPeak, sig.priceUsd);
+      pos.pendingPeakUsd = undefined;
+    } else if (pos.pendingPeakUsd != null) {
+      pos.peakUsd = Math.min(pos.pendingPeakUsd, sig.priceUsd); // confirmado por 2ª lectura
+      pos.pendingPeakUsd = undefined;
+    } else {
+      pos.peakUsd = prevPeak; // el pico vigente no se mueve todavía
+      pos.pendingPeakUsd = sig.priceUsd; // 1ª lectura del salto: cuarentena
+    }
 
     const change = (sig.priceUsd - pos.avgEntryUsd) / pos.avgEntryUsd;
     const peakGain = (pos.peakUsd - pos.avgEntryUsd) / pos.avgEntryUsd;
