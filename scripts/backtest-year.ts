@@ -164,6 +164,18 @@ async function main() {
       const t = taSnapshot(c.slice(Math.max(0, i - 25), i).map((p) => p.price));
       if (t) ta[sym] = t;
     }
+    // TEST_DONCHIAN: máximo de N días por símbolo, SOLO con ventana completa
+    // (ventana parcial = máximos artificialmente bajos = falsas rupturas)
+    const DONCH_N = Number(process.env.TEST_DONCHIAN ?? 0);
+    let donchianHighUsd: Record<string, number> | undefined;
+    if (DONCH_N > 0 && i >= DONCH_N * 24) {
+      donchianHighUsd = {};
+      for (const [sym, c] of series) {
+        let h = 0;
+        for (let j = i - DONCH_N * 24; j < i; j++) h = Math.max(h, c[j].price);
+        donchianHighUsd[sym] = h;
+      }
+    }
     const ctx: MarketContext = {
       signals,
       fearGreedValue: fng.get(day) ?? 50,
@@ -173,6 +185,7 @@ async function main() {
       low48h,
       high168h,
       range24hPct,
+      donchianHighUsd,
       ta,
     };
     const decisions = decide(ctx, portfolio);

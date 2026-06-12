@@ -154,6 +154,33 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
       }
     }
 
+    // DONCHIAN (lab, RECHAZADO 12-jun — no reabrir sin idea nueva): ruptura
+    // del máximo de N días con puerta F&G. El cribado a nivel señal era
+    // prometedor (+2.6-3.2%/trade neto en 1000d/épocaA), pero en CARTERA
+    // pierde de las dos formas: añadido al BULL canibaliza (las rupturas
+    // que el filtro de fuerza 7d rechazaba son las débiles, y bloquean
+    // slots: 365d -31.0 vs -26.8); sustituyendo al BULL es mucho peor
+    // (1000d -55.5 vs -37.2: el gatillo fuerza-7d vale ~18pp). Lección:
+    // los cribados por-trade no ven la competencia por capital.
+    const DONCH_N = Number(process.env.TEST_DONCHIAN ?? 0);
+    if (DONCH_N > 0) {
+      const BULL_FG = Number(process.env.TEST_BULL_FG ?? 55);
+      const dHigh = ctx.donchianHighUsd?.[s.symbol];
+      if (ctx.fearGreedValue >= BULL_FG && dHigh != null && dHigh > 0 && s.priceUsd > dHigh && !pumped && !held.has(s.symbol)) {
+        return {
+          symbol: s.symbol,
+          action: "BUY" as const,
+          confidence: 0.7,
+          reasons: [
+            `DONCHIAN: ruptura del máximo ${DONCH_N}d ($${dHigh.toFixed(4)}) con F&G ${ctx.fearGreedValue}`,
+            ...reasons.slice(1),
+          ],
+          signal: s,
+          strategy: "bull" as const,
+        };
+      }
+    }
+
     // H8 (lab): umbral adaptativo a la volatilidad — un umbral fijo significa
     // cosas distintas según el pulso del día. TEST_ADAPTIVE_TH = rango 24h
     // "pivote" en % (el umbral escala rango/pivote, acotado 0.6–1.8×); 0 = off.
