@@ -118,11 +118,21 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     breakerOn = n > 0 && sum / n <= -BREAKER;
   }
 
+  // TEST_ONLY_SYMBOLS (lab, 12-jun): restringe las COMPRAS a una sublista
+  // (ej. "ETH,DOGE,CAKE,XRP" — majors baratos) manteniendo el resto de la
+  // watchlist como contexto de mercado. Hallazgo: la cesta de alts es la
+  // sangría estructural (cuarteto: épocaA -7.7 vs -54.8 del baseline).
+  const ONLY = (process.env.TEST_ONLY_SYMBOLS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+
   return ctx.signals.map((s) => {
     // Guarda común de los knobs de laboratorio: bloquea ENTRADAS nuevas
-    // (nunca ventas) cuando el cupo de régimen, el finde o el breaker mandan.
+    // (nunca ventas) cuando el cupo de régimen, el finde, el breaker o la
+    // sub-cesta mandan.
     const entriesBlocked =
-      regimeFull || breakerOn || (SKIP_WKND && [0, 6].includes(new Date(s.timestamp).getUTCDay()));
+      regimeFull ||
+      breakerOn ||
+      (SKIP_WKND && [0, 6].includes(new Date(s.timestamp).getUTCDay())) ||
+      (ONLY.length > 0 && !ONLY.includes(s.symbol));
     // Tokens de alta beta (trending volátiles): SOLO comprables en risk-on.
     // En bajista, sus rebotes-trampa duplican el drawdown (validado).
     const betaBlocked = config.watchlist[s.symbol]?.highBeta === true && !riskOn;
