@@ -36,7 +36,10 @@ function effectiveLabs(): Record<string, number | boolean> {
 const STATE_FILE = join(process.cwd(), "data", "state.json");
 const EQUITY_FILE = join(process.cwd(), "data", "equity.json");
 const SIGNALS_LOG = join(process.cwd(), "data", "signals-log.jsonl");
-const MAX_EQUITY_POINTS = 5000;
+const JOURNAL_FILE = join(process.cwd(), "data", "trade-journal.jsonl");
+// 20k puntos ≈ 69 días a ticks de 5 min — el tope anterior (5000 ≈ 17d)
+// habría deslizado el inicio del track record EN MEDIO de la semana live.
+const MAX_EQUITY_POINTS = 20000;
 
 export interface EquityPoint {
   t: string;
@@ -85,6 +88,7 @@ export interface TickState {
     labs?: Record<string, number | boolean>;
     ops: { tickSeconds: number; fastCheckSeconds: number; watchlist: string[]; complianceTradeUsd: number };
   };
+  trackRecord?: TrackRecord | null;
   intel?: import("../signals/intel.js").Intel | null;
 }
 
@@ -96,6 +100,111 @@ function maxDrawdownPct(equity: EquityPoint[]): number {
     maxDd = Math.max(maxDd, (peak - p.totalUsd) / peak);
   }
   return maxDd * 100;
+}
+
+// Track record estilo cuenta de fondeo (prop firm): las métricas que un
+// inversor exigiría antes de poner dinero. Se calculan de la curva de
+// equity real + trades cerrados; los ratios que necesitan muestra mínima
+// (Sharpe/Sortino/anualizado) devuelven null hasta tenerla — un Sharpe de
+// 3 días sería marketing, no estadística.
+export interface TrackRecord {
+  sinceIso: string;
+  days: number;
+  startUsd: number;
+  equityUsd: number;
+  totalReturnPct: number;
+  annualizedReturnPct: number | null; // null si <7 días de historia
+  maxDrawdownPct: number;
+  currentDrawdownPct: number;
+  dailyVolPct: number | null; // desviación típica de retornos diarios
+  sharpe: number | null; // anualizado √365, rf=0; null si <5 retornos diarios
+  sortino: number | null;
+  calmar: number | null; // anualizado / maxDD
+  bestDayPct: number | null;
+  worstDayPct: number | null;
+  avgExposurePct: number; // % medio del capital invertido (no en cash)
+  closedTrades: number;
+  winRatePct: number | null;
+  profitFactor: number | null;
+  expectancyUsd: number | null; // PnL medio por trade cerrado
+  avgHoldHours: number | null; // del trade-journal (si existe)
+  maxConsecLosses: number | null;
+}
+
+function computeTrackRecord(equity: EquityPoint[], portfolio: Portfolio): TrackRecord | null {
+  if (equity.length < 2) return null;
+  const first = equity[0];
+  const last = equity[equity.length - 1];
+  const days = (Date.parse(last.t) - Date.parse(first.t)) / 86_400_000;
+  const totalReturnPct = (last.totalUsd / first.totalUsd - 1) * 100;
+
+  // Retornos sobre cierres diarios (último punto de cada día UTC)
+  const byDay = new Map<string, number>();
+  for (const p of equity) byDay.set(p.t.slice(0, 10), p.totalUsd);
+  const closes = [...byDay.values()];
+  const rets: number[] = [];
+  for (let i = 1; i < closes.length; i++) rets.push(closes[i] / closes[i - 1] - 1);
+  const mean = rets.length ? rets.reduce((a, b) => a + b, 0) / rets.length : 0;
+  const sd = rets.length > 1 ? Math.sqrt(rets.reduce((s, r) => s + (r - mean) ** 2, 0) / (rets.length - 1)) : 0;
+  const downside = rets.filter((r) => r < 0);
+  const dsd = downside.length ? Math.sqrt(downside.reduce((s, r) => s + r * r, 0) / downside.length) : 0;
+
+  const maxDd = maxDrawdownPct(equity);
+  let peak = -Infinity;
+  for (const p of equity) peak = Math.max(peak, p.totalUsd);
+  const annualizedReturnPct = days >= 7 ? (Math.pow(last.totalUsd / first.totalUsd, 365 / days) - 1) * 100 : null;
+  const enough = rets.length >= 5;
+
+  const closed = portfolio.history.filter((f) => f.order.side === "SELL" && f.realizedPnlUsd !== undefined);
+  const wins = closed.filter((f) => (f.realizedPnlUsd ?? 0) > 0);
+  const losses = closed.filter((f) => (f.realizedPnlUsd ?? 0) <= 0);
+  const grossWin = wins.reduce((s, f) => s + (f.realizedPnlUsd ?? 0), 0);
+  const grossLoss = Math.abs(losses.reduce((s, f) => s + (f.realizedPnlUsd ?? 0), 0));
+  let maxConsec = 0;
+  let run = 0;
+  for (const f of closed) {
+    if ((f.realizedPnlUsd ?? 0) <= 0) maxConsec = Math.max(maxConsec, ++run);
+    else run = 0;
+  }
+
+  // Hold medio desde el diario de operaciones (si existe y es legible)
+  let avgHoldHours: number | null = null;
+  try {
+    if (existsSync(JOURNAL_FILE)) {
+      const holds = readFileSync(JOURNAL_FILE, "utf-8")
+        .split("\n")
+        .filter((l) => l.trim())
+        .map((l) => JSON.parse(l).holdHours as number)
+        .filter((h) => Number.isFinite(h));
+      if (holds.length) avgHoldHours = holds.reduce((a, b) => a + b, 0) / holds.length;
+    }
+  } catch {
+    /* diario corrupto: métrica ausente, no fatal */
+  }
+
+  return {
+    sinceIso: first.t,
+    days: Math.round(days * 10) / 10,
+    startUsd: first.totalUsd,
+    equityUsd: last.totalUsd,
+    totalReturnPct,
+    annualizedReturnPct,
+    maxDrawdownPct: maxDd,
+    currentDrawdownPct: ((peak - last.totalUsd) / peak) * 100,
+    dailyVolPct: enough ? sd * 100 : null,
+    sharpe: enough && sd > 0 ? (mean / sd) * Math.sqrt(365) : null,
+    sortino: enough && dsd > 0 ? (mean / dsd) * Math.sqrt(365) : null,
+    calmar: annualizedReturnPct != null && maxDd > 0 ? annualizedReturnPct / maxDd : null,
+    bestDayPct: rets.length ? Math.max(...rets) * 100 : null,
+    worstDayPct: rets.length ? Math.min(...rets) * 100 : null,
+    avgExposurePct: (equity.reduce((s, p) => s + (1 - p.cashUsd / (p.totalUsd || 1)), 0) / equity.length) * 100,
+    closedTrades: closed.length,
+    winRatePct: closed.length ? (wins.length / closed.length) * 100 : null,
+    profitFactor: grossLoss > 0 ? grossWin / grossLoss : null,
+    expectancyUsd: closed.length ? closed.reduce((s, f) => s + (f.realizedPnlUsd ?? 0), 0) / closed.length : null,
+    avgHoldHours,
+    maxConsecLosses: closed.length ? maxConsec : null,
+  };
 }
 
 export function writeTickState(
@@ -210,6 +319,7 @@ export function writeTickState(
         complianceTradeUsd: config.complianceTradeUsd,
       },
     },
+    trackRecord: computeTrackRecord(equity, portfolio),
     intel: intel ?? null,
   };
 
