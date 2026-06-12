@@ -149,6 +149,18 @@ async function main() {
   let peak = config.paperStartingUsd;
   let maxDd = 0;
 
+  // TEST_COMPLIANCE (lab, 12-jun): simula la regla del concurso "mínimo
+  // 1 trade/día" — hueco de fidelidad: el harness nunca pagaba este peaje.
+  // Políticas: "eth" (gesto actual del agente: $12 del token de compliance a
+  // las 18 UTC si no hubo trade), "best" (oportunista: $12 al mejor momentum
+  // no tenido — una entrada marginal diaria), "roundtrip" (ida y vuelta:
+  // compra el gesto y lo vende al tick siguiente — coste fijo, sin deriva).
+  const COMPLIANCE = process.env.TEST_COMPLIANCE ?? ""; // "" = sin simular (histórico)
+  let lastTradeDay = "";
+  let complianceBuys = 0;
+  let complianceSells = 0;
+  let rtPending: { symbol: string; qty: number } | null = null;
+
   for (let i = WARMUP; i < len; i++) {
     const signals: TokenSignal[] = [];
     let ts = 0;
@@ -237,6 +249,60 @@ async function main() {
     for (const order of orders) {
       applyFill(portfolio, { order, executedAt: new Date(ts).toISOString(), fee: simulatedFee(order) });
     }
+    if (orders.length) lastTradeDay = day;
+
+    if (COMPLIANCE) {
+      // Cierre pendiente del roundtrip (un tick después de su compra)
+      if (rtPending) {
+        const pos = portfolio.positions.find((p) => p.symbol === rtPending.symbol);
+        if (pos) {
+          const px = series.get(rtPending.symbol)![i].price;
+          const o = { symbol: rtPending.symbol, side: "SELL" as const, amountUsd: pos.qty * px, priceUsd: px, qty: pos.qty, reason: "COMPLIANCE-RT: cierre del gesto" };
+          applyFill(portfolio, { order: o, executedAt: new Date(ts).toISOString(), fee: simulatedFee(o) });
+          complianceSells++;
+          lastTradeDay = day;
+        }
+        rtPending = null;
+      }
+      if (day !== lastTradeDay && new Date(ts).getUTCHours() >= config.complianceHourUtc) {
+        let sym = config.complianceSymbol;
+        if (COMPLIANCE === "best") {
+          // mejor momentum NO tenido (réplica de momentumScore del engine)
+          let bestScore = -Infinity;
+          for (const s of signals) {
+            if (portfolio.positions.some((p) => p.symbol === s.symbol)) continue;
+            const m = s.percentChange1h * 0.5 + s.percentChange24h * 0.35 + s.percentChange7d * 0.15;
+            const vb = s.volumeChange24h > 20 ? 1.2 : s.volumeChange24h < -20 ? 0.8 : 1;
+            if (m * vb > bestScore) {
+              bestScore = m * vb;
+              sym = s.symbol;
+            }
+          }
+        }
+        const c = series.get(sym);
+        if (c) {
+          const px = c[i].price;
+          if (portfolio.cashUsd >= config.complianceTradeUsd) {
+            const wasNew = !portfolio.positions.some((p) => p.symbol === sym);
+            const o = { symbol: sym, side: "BUY" as const, amountUsd: config.complianceTradeUsd, priceUsd: px, qty: config.complianceTradeUsd / px, reason: "COMPLIANCE: mínimo 1 trade/día" };
+            applyFill(portfolio, { order: o, executedAt: new Date(ts).toISOString(), fee: simulatedFee(o) });
+            complianceBuys++;
+            lastTradeDay = day;
+            if (COMPLIANCE === "roundtrip" && wasNew) rtPending = { symbol: sym, qty: o.qty };
+          } else {
+            // sin cash: cierre de la posición más pequeña (réplica del agente)
+            const smallest = [...portfolio.positions].sort((a, b) => a.qty * a.avgEntryUsd - b.qty * b.avgEntryUsd)[0];
+            if (smallest) {
+              const spx = series.get(smallest.symbol)![i].price;
+              const o = { symbol: smallest.symbol, side: "SELL" as const, amountUsd: smallest.qty * spx, priceUsd: spx, qty: smallest.qty, reason: "COMPLIANCE: cierre (sin cash)" };
+              applyFill(portfolio, { order: o, executedAt: new Date(ts).toISOString(), fee: simulatedFee(o) });
+              complianceSells++;
+              lastTradeDay = day;
+            }
+          }
+        }
+      }
+    }
     const total =
       portfolio.cashUsd +
       portfolio.positions.reduce((s, p) => {
@@ -278,6 +344,7 @@ async function main() {
   console.log(`Buy & hold      : ${bh.toFixed(1)}%`);
   console.log(`Max drawdown    : -${(maxDd * 100).toFixed(1)}%`);
   console.log(`Trades          : ${portfolio.history.length} (${closed.length} cierres, WR ${closed.length ? ((wins / closed.length) * 100).toFixed(0) : "—"}%)`);
+  if (COMPLIANCE) console.log(`Compliance      : política "${COMPLIANCE}" — ${complianceBuys} compras + ${complianceSells} cierres forzados`);
   console.log("\n---------- DISTRIBUCIÓN DE SEMANAS (ventanas 7d) ----------");
   console.log(`Semanas medidas : ${weekly.length} | en positivo: ${posWeeks} (${((posWeeks / weekly.length) * 100).toFixed(0)}%)`);
   console.log(`Peor semana     : ${q(0).toFixed(1)}%`);
