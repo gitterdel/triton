@@ -15,6 +15,7 @@ export interface TokenSignal {
 export interface MarketContext {
   fearGreedValue: number; // 0-100
   fearGreedLabel: string; // "Extreme Fear" .. "Extreme Greed"
+  fearGreedDelta7d?: number; // F&G hoy − hace 7 días (TEST_FG_VEL: velocidad del sentimiento)
   signals: TokenSignal[];
   trending: string[]; // símbolos trending en CMC (señal de atención/narrativa)
   high48h?: Record<string, number>; // máximo de 48h por símbolo (resistencia corta, para breakouts)

@@ -83,7 +83,44 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
   // Risk-on global: mercado no cayendo + sentimiento fuera del miedo
   const riskOn = marketAvg7d > -3 && ctx.fearGreedValue >= 35;
 
+  // TEST_REGIME_POS (lab, RECHAZADO 12-jun): cupo adaptativo al régimen.
+  // No muerde: con F&G<25 el umbral fear ya bloquea casi todas las entradas
+  // y rara vez hay 4+ posiciones (1000d idéntico al base; épocaA -1pp). La
+  // magia de POS4 era capar exposición SIEMPRE, no solo en miedo.
+  const REGIME_POS = Number(process.env.TEST_REGIME_POS ?? 0); // 0 = apagado
+  const REGIME_FG = Number(process.env.TEST_REGIME_FG ?? 25);
+  const regimeFull = REGIME_POS > 0 && ctx.fearGreedValue < REGIME_FG && held.size >= REGIME_POS;
+
+  // TEST_SKIP_WEEKEND (lab, RECHAZADO 12-jun): sin entradas sáb/dom UTC.
+  // Inconsistente entre épocas (épocaA +9.3pp pero 365d -1.4pp y 90d -0.4):
+  // el efecto finde no es estable — no hay forma honesta de quedárselo.
+  const SKIP_WKND = process.env.TEST_SKIP_WEEKEND === "1";
+
+  // TEST_BREAKER (lab, RECHAZADO 12-jun): cesta a -X% de su máx 7d corta
+  // entradas. El dial se contradice entre épocas (365d: monótono hacia 8,
+  // -17.7 vs -26.8; épocaA: 8 DAÑA -56.0 y 12 es pico aislado) — el umbral
+  // bueno depende de si los desplomes rebotan en V o siguen cayendo, que
+  // solo se sabe a posteriori. Sin meseta = sin parámetro elegible.
+  const BREAKER = Number(process.env.TEST_BREAKER ?? 0); // 0 = apagado
+  let breakerOn = false;
+  if (BREAKER > 0 && ctx.high168h) {
+    let sum = 0;
+    let n = 0;
+    for (const sig of ctx.signals) {
+      const h = ctx.high168h[sig.symbol];
+      if (h && h > 0) {
+        sum += (sig.priceUsd / h - 1) * 100;
+        n++;
+      }
+    }
+    breakerOn = n > 0 && sum / n <= -BREAKER;
+  }
+
   return ctx.signals.map((s) => {
+    // Guarda común de los knobs de laboratorio: bloquea ENTRADAS nuevas
+    // (nunca ventas) cuando el cupo de régimen, el finde o el breaker mandan.
+    const entriesBlocked =
+      regimeFull || breakerOn || (SKIP_WKND && [0, 6].includes(new Date(s.timestamp).getUTCDay()));
     // Tokens de alta beta (trending volátiles): SOLO comprables en risk-on.
     // En bajista, sus rebotes-trampa duplican el drawdown (validado).
     const betaBlocked = config.watchlist[s.symbol]?.highBeta === true && !riskOn;
@@ -138,8 +175,15 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     if (process.env.TEST_BULL_MODE === "1") {
       const BULL_FG = Number(process.env.TEST_BULL_FG ?? 55);
       const BULL_7D = Number(process.env.TEST_BULL_7D ?? 5);
-      const bullRegime = ctx.fearGreedValue >= BULL_FG && marketAvg7d > 0;
-      if (bullRegime && s.percentChange7d >= BULL_7D && s.percentChange24h > 0 && !overextended && !pumped && !held.has(s.symbol)) {
+      // TEST_FG_VEL (lab, RECHAZADO 12-jun): puerta por VELOCIDAD del F&G
+      // (Δ7d≥X despierta el bull bajo el umbral). Trampa confirmada: los
+      // rallies de oso suben el F&G +10-15 y el bull entra con stop ancho
+      // (365d -34.7 con VEL10 y -32.4 con VEL15, vs -26.8 base). Curioso:
+      // mejoraba el 90d actual (-8.0, mejor semana 8.7) — anotado, no vale.
+      const FG_VEL = Number(process.env.TEST_FG_VEL ?? 0); // 0 = apagado
+      const fgVelOk = FG_VEL > 0 && (ctx.fearGreedDelta7d ?? -Infinity) >= FG_VEL;
+      const bullRegime = (ctx.fearGreedValue >= BULL_FG || fgVelOk) && marketAvg7d > 0;
+      if (bullRegime && s.percentChange7d >= BULL_7D && s.percentChange24h > 0 && !overextended && !pumped && !entriesBlocked && !held.has(s.symbol)) {
         return {
           symbol: s.symbol,
           action: "BUY" as const,
@@ -166,7 +210,7 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     if (DONCH_N > 0) {
       const BULL_FG = Number(process.env.TEST_BULL_FG ?? 55);
       const dHigh = ctx.donchianHighUsd?.[s.symbol];
-      if (ctx.fearGreedValue >= BULL_FG && dHigh != null && dHigh > 0 && s.priceUsd > dHigh && !pumped && !held.has(s.symbol)) {
+      if (ctx.fearGreedValue >= BULL_FG && dHigh != null && dHigh > 0 && s.priceUsd > dHigh && !pumped && !entriesBlocked && !held.has(s.symbol)) {
         return {
           symbol: s.symbol,
           action: "BUY" as const,
@@ -191,7 +235,7 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
       if (rng != null && rng > 0) effBuyTh = buyThreshold * Math.min(1.8, Math.max(0.6, rng / ADAPT));
     }
 
-    if (score >= effBuyTh && confirmed && !betaBlocked && !overextended && !underResistance && !pumped && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
+    if (score >= effBuyTh && confirmed && !betaBlocked && !overextended && !underResistance && !pumped && !entriesBlocked && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
       const confidence = Math.min(0.95, 0.5 + (score - effBuyTh) / 10);
       return { symbol: s.symbol, action: "BUY" as const, confidence, reasons, signal: s, strategy: "momentum" as const };
     }
@@ -211,6 +255,7 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
       s.percentChange7d > B.minPct7d &&
       marketAvg7d > B.maxMarketDecline7d &&
       ctx.fearGreedValue >= B.minFearGreed &&
+      !entriesBlocked &&
       !held.has(s.symbol)
     ) {
       const confidence = Math.min(0.9, 0.62 + s.volumeChange24h / 300);
@@ -243,6 +288,7 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
         s.percentChange7d > -15 &&
         !pumped &&
         !betaBlocked &&
+        !entriesBlocked &&
         !held.has(s.symbol)
       ) {
         return {
@@ -273,7 +319,7 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
     // clásica; con datos, se exige proximidad al soporte.
     const supportPct = Number(process.env.TEST_SUPPORT_PCT ?? R.nearSupportPct);
     const nearSupport = lo48 == null || s.priceUsd <= lo48 * (1 + supportPct / 100);
-    if (sideways && dipTurning && marketSideways && nearSupport && ctx.fearGreedValue >= R.minFearGreed && !held.has(s.symbol)) {
+    if (sideways && dipTurning && marketSideways && nearSupport && ctx.fearGreedValue >= R.minFearGreed && !entriesBlocked && !held.has(s.symbol)) {
       const confidence = Math.min(0.85, 0.6 + Math.abs(s.percentChange24h) / 20);
       return {
         symbol: s.symbol,

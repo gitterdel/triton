@@ -176,9 +176,12 @@ async function main() {
         donchianHighUsd[sym] = h;
       }
     }
+    const day7ago = new Date(ts - 7 * 86_400_000).toISOString().slice(0, 10);
+    const fgNow = fng.get(day) ?? 50;
     const ctx: MarketContext = {
       signals,
-      fearGreedValue: fng.get(day) ?? 50,
+      fearGreedValue: fgNow,
+      fearGreedDelta7d: fng.has(day) && fng.has(day7ago) ? fgNow - (fng.get(day7ago) as number) : undefined,
       fearGreedLabel: "",
       trending: [],
       high48h,

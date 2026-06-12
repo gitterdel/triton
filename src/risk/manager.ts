@@ -156,6 +156,16 @@ export function applyRisk(decisions: Decision[], portfolio: Portfolio, signals: 
       armPct = stopPct * 0.6;
     }
 
+    // TEST_TRAIL_RATCHET (lab, RECHAZADO 12-jun): "at:trail" — al superar
+    // +at% de pico, la correa se afloja a trail%. Neutral en todas las
+    // ventanas (mejor caso 1000d +0.8pp; resto ±0.3) — Occam lo retira:
+    // los ganadores >10% del momentum son tan raros que no mueve la aguja.
+    const RATCHET = process.env.TEST_TRAIL_RATCHET; // ej. "10:8"; vacío = off
+    if (RATCHET) {
+      const [at, t] = RATCHET.split(":").map(Number);
+      if (at > 0 && t > 0 && peakGain >= at / 100) trailPct = Math.max(trailPct, t / 100);
+    }
+
     if (change <= -stopPct) {
       orders.push({
         symbol: pos.symbol,
