@@ -230,7 +230,12 @@ async function main() {
       donchianHighUsd,
       ta,
     };
-    const decisions = decide(ctx, portfolio);
+    // TEST_ONLY_SYMBOLS (lab, hipótesis usuario 12-jun): restringe las
+    // COMPRAS a una sublista (ej. "ETH" o "ETH,DOGE,CAKE,XRP" — los baratos
+    // de fricción) manteniendo TODA la watchlist como contexto de mercado.
+    const decisionsAll = decide(ctx, portfolio);
+    const ONLY = (process.env.TEST_ONLY_SYMBOLS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    const decisions = ONLY.length ? decisionsAll.filter((d) => d.action !== "BUY" || ONLY.includes(d.symbol)) : decisionsAll;
     const { orders } = applyRisk(decisions, portfolio, signals, ts);
     for (const order of orders) {
       applyFill(portfolio, { order, executedAt: new Date(ts).toISOString(), fee: simulatedFee(order) });
