@@ -81,5 +81,8 @@ export const RISK_LIMITS = {
   trailingActivationPct: 0.03, // el trailing se arma a partir de +3% sobre entrada
   dailyLossCapPct: 0.08, // si el día acumula -8%, kill switch hasta mañana
   minConfidenceToTrade: 0.6,
-  simulatedFeePct: 0.0025, // 0.25% por lado, aprox PancakeSwap
+  // Coste simulado por lado. Knob de laboratorio para el ESTRÉS DE COSTES
+  // (12-jun: el ensayo real midió ~1.35% ida+vuelta vs el 0.5% simulado —
+  // la viabilidad del bot con dinero real depende de esta sensibilidad).
+  simulatedFeePct: labNum(process.env.TEST_FEE_PCT, 0.0025, 0.0005, 0.01), // 0.25% por lado, aprox PancakeSwap
 };
