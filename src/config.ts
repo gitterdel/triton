@@ -81,10 +81,11 @@ export const RISK_LIMITS = {
   trailingActivationPct: 0.03, // el trailing se arma a partir de +3% sobre entrada
   dailyLossCapPct: 0.08, // si el día acumula -8%, kill switch hasta mañana
   minConfidenceToTrade: 0.6,
-  // Coste simulado por lado. Default = COSTE REAL MEDIDO en el ensayo de
-  // ejecución del 11-jun: 1.354% ida+vuelta con dinero real en twak (fee DEX
-  // + slippage + deriva; una muestra de ~$18). Paper y backtests deben pagar
-  // lo que paga la carrera, no el 0.25% teórico de PancakeSwap.
-  // TEST_FEE_PCT sigue disponible como knob de laboratorio.
-  simulatedFeePct: labNum(process.env.TEST_FEE_PCT, 0.00675, 0.0005, 0.01),
+  // Coste simulado por lado. Default = MEDIA DE LA CESTA medida con quotes
+  // reales de twak el 12-jun (scripts/quote-friction.ts): 1.60-1.64% ida+
+  // vuelta según token (ETH 1.40 … FET 1.95; priceImpact 0 — es spread de
+  // ruta del agregador, no talla). El ensayo real del 11-jun (1.354%) cayó
+  // en el extremo barato. Paper y backtests deben pagar lo que paga la
+  // carrera. TEST_FEE_PCT sigue disponible como knob de laboratorio.
+  simulatedFeePct: labNum(process.env.TEST_FEE_PCT, 0.008, 0.0005, 0.01),
 };
