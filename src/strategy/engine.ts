@@ -47,7 +47,7 @@ export const STRATEGY_PARAMS = {
   },
 };
 
-function momentumScore(s: TokenSignal): number {
+export function momentumScore(s: TokenSignal): number {
   const m = s.percentChange1h * 0.5 + s.percentChange24h * 0.35 + s.percentChange7d * 0.15;
   const volBoost = s.volumeChange24h > 20 ? 1.2 : s.volumeChange24h < -20 ? 0.8 : 1;
   return m * volBoost;

@@ -15,7 +15,7 @@ import "dotenv/config";
 process.env.TRITON_BACKTEST = "1";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { config } from "../src/config.js";
-import { decide } from "../src/strategy/engine.js";
+import { decide, momentumScore } from "../src/strategy/engine.js";
 import { applyRisk } from "../src/risk/manager.js";
 import { applyFill, simulatedFee } from "../src/state/portfolio.js";
 import type { MarketContext, Portfolio, TokenSignal } from "../src/types.js";
@@ -267,14 +267,13 @@ async function main() {
       if (day !== lastTradeDay && new Date(ts).getUTCHours() >= config.complianceHourUtc) {
         let sym = config.complianceSymbol;
         if (COMPLIANCE === "best") {
-          // mejor momentum NO tenido (réplica de momentumScore del engine)
+          // mejor momentum NO tenido (misma función que usa el agente)
           let bestScore = -Infinity;
           for (const s of signals) {
             if (portfolio.positions.some((p) => p.symbol === s.symbol)) continue;
-            const m = s.percentChange1h * 0.5 + s.percentChange24h * 0.35 + s.percentChange7d * 0.15;
-            const vb = s.volumeChange24h > 20 ? 1.2 : s.volumeChange24h < -20 ? 0.8 : 1;
-            if (m * vb > bestScore) {
-              bestScore = m * vb;
+            const sc = momentumScore(s);
+            if (sc > bestScore) {
+              bestScore = sc;
               sym = s.symbol;
             }
           }

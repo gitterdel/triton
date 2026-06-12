@@ -1,6 +1,6 @@
 import { config } from "./config.js";
 import { fetchMarketContext } from "./signals/cmc.js";
-import { decide } from "./strategy/engine.js";
+import { decide, momentumScore } from "./strategy/engine.js";
 import { applyRisk } from "./risk/manager.js";
 import { loadPortfolio, savePortfolio, applyFill } from "./state/portfolio.js";
 import { paperExecutor } from "./execution/paper.js";
@@ -237,9 +237,18 @@ async function ensureDailyCompliance(
   }
   if (Date.now() - attempts.lastAt < 30 * 60_000) return null; // separación entre intentos
 
-  const sig = ctx.signals.find((s) => s.symbol === config.complianceSymbol);
+  // Política BEST (A/B 12-jun, validada 4/4 ventanas: +7.8 a +15.5pp vs ETH
+  // fijo): el gesto forzoso compra el mejor momentum que NO tengamos — nunca
+  // fusiona posiciones (los re-buys de ETH recalculaban avgEntry y stops:
+  // bolsas que morían mal, 39-129 cierres forzados vs 9-48) y opera a favor
+  // de la fuerza. Fallback al token clásico si toda la watchlist está tenida.
+  const heldSyms = new Set(portfolio.positions.map((p) => p.symbol));
+  const candidates = ctx.signals.filter((s) => !heldSyms.has(s.symbol));
+  const sig = candidates.length
+    ? candidates.reduce((a, b) => (momentumScore(b) > momentumScore(a) ? b : a))
+    : ctx.signals.find((s) => s.symbol === config.complianceSymbol);
   if (!sig) {
-    console.error("  🚨 COMPLIANCE: sin precio del token de compliance — se reintentará");
+    console.error("  🚨 COMPLIANCE: sin candidato con precio — se reintentará");
     return null;
   }
 
@@ -258,7 +267,7 @@ async function ensureDailyCompliance(
     };
   } else if (portfolio.cashUsd >= config.complianceTradeUsd && !killSwitchActive) {
     order = {
-      symbol: config.complianceSymbol,
+      symbol: sig.symbol,
       side: "BUY",
       amountUsd: config.complianceTradeUsd,
       priceUsd: sig.priceUsd,
