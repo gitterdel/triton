@@ -247,6 +247,41 @@ export function decide(ctx: MarketContext, portfolio: Portfolio): Decision[] {
       if (rng != null && rng > 0) effBuyTh = buyThreshold * Math.min(1.8, Math.max(0.6, rng / ADAPT));
     }
 
+    // TEST_INVERT (lab, 13-jun, hipótesis del operador — RECHAZADO 4/4 épocas):
+    // ESPEJO del momentum (comprar debilidad, vender fuerza). El operador
+    // observó 2 perdedoras seguidas (ATOM, DOGE) y propuso invertir. Probado
+    // a fee real + compliance: PEOR en todo — 90d -20.6 vs -9.6 · 365d -59.8
+    // vs -45.8 · 1000d -89.9 vs -60.6 · épocaA -91.8 vs -76.0; WR cae a 24%.
+    // Diagnóstico de retornos forward (sobre 1M+ horas): el momentum SÍ
+    // predice (1000d monótono: bucket >8 → +1.0%/24h); el único sitio donde
+    // la debilidad rebota es la capitulación profunda (<-8: +1.3-3.9% bruto),
+    // PERO < el peaje de 1.6% (ya muerto 3 veces: dip, perdedor-24h, capit).
+    // Las 2 perdedoras del operador son la experiencia normal de un sistema
+    // WR~33% (P(2 seguidas)~45%), no una señal invertida. NO REABRIR.
+    // Mismo overlay de riesgo; filtros direccionales espejados; pump se queda.
+    const INVERT = process.env.TEST_INVERT === "1";
+    if (INVERT) {
+      const invScore = -score;
+      const invConfirmed = s.percentChange24h < 0 && s.percentChange7d > -25;
+      const invKnife = s.percentChange1h < -MAX_1H; // caída vertical de 1h: esperar
+      if (invScore >= effBuyTh && invConfirmed && !invKnife && !betaBlocked && !pumped && !entriesBlocked && !held.has(s.symbol)) {
+        const confidence = Math.min(0.95, 0.5 + (invScore - effBuyTh) / 10);
+        return {
+          symbol: s.symbol,
+          action: "BUY" as const,
+          confidence,
+          reasons: [`INVERT: compra de debilidad, momentum ${score.toFixed(2)} (24h=${s.percentChange24h.toFixed(2)}%)`, ...reasons.slice(1)],
+          signal: s,
+          strategy: "momentum" as const,
+        };
+      }
+      if (invScore <= sellThreshold && held.has(s.symbol) && !heldBull.has(s.symbol)) {
+        const confidence = Math.min(0.95, 0.5 + (sellThreshold - invScore) / 10);
+        return { symbol: s.symbol, action: "SELL" as const, confidence, reasons, signal: s, strategy: "momentum" as const };
+      }
+      return { symbol: s.symbol, action: "HOLD" as const, confidence: 0, reasons, signal: s };
+    }
+
     if (score >= effBuyTh && confirmed && !betaBlocked && !overextended && !underResistance && !pumped && !entriesBlocked && marketAvg24h > LEADER_GATE && !held.has(s.symbol)) {
       const confidence = Math.min(0.95, 0.5 + (score - effBuyTh) / 10);
       return { symbol: s.symbol, action: "BUY" as const, confidence, reasons, signal: s, strategy: "momentum" as const };
