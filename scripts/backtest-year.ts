@@ -156,6 +156,9 @@ async function main() {
   // no tenido — una entrada marginal diaria), "roundtrip" (ida y vuelta:
   // compra el gesto y lo vende al tick siguiente — coste fijo, sin deriva).
   const COMPLIANCE = process.env.TEST_COMPLIANCE ?? ""; // "" = sin simular (histórico)
+  const EVENTLOG = process.env.TEST_EVENTLOG === "1";
+  const buyEvents: { sym: string; i: number }[] = [];
+  const stopEvents: { sym: string; i: number }[] = [];
   let lastTradeDay = "";
   let complianceBuys = 0;
   let complianceSells = 0;
@@ -248,6 +251,13 @@ async function main() {
     const { orders } = applyRisk(decisions, portfolio, signals, ts);
     for (const order of orders) {
       applyFill(portfolio, { order, executedAt: new Date(ts).toISOString(), fee: simulatedFee(order) });
+      // TEST_EVENTLOG: registra entradas momentum y salidas por stop con su
+      // índice, para el "event study" del camino de precio alrededor (¿el bot
+      // compra picos locales y vende mínimos locales?). Diagnóstico post-hoc.
+      if (EVENTLOG) {
+        if (order.side === "BUY" && /^momentum=/.test(order.reason)) buyEvents.push({ sym: order.symbol, i });
+        else if (order.side === "SELL" && order.reason.startsWith("STOP-LOSS")) stopEvents.push({ sym: order.symbol, i });
+      }
     }
     if (orders.length) lastTradeDay = day;
 
@@ -351,6 +361,31 @@ async function main() {
   console.log(`Mediana         : ${q(0.5).toFixed(1)}%`);
   console.log(`Percentil 75    : ${q(0.75).toFixed(1)}%`);
   console.log(`Mejor semana    : ${weekly[weekly.length - 1].toFixed(1)}%`);
+
+  if (EVENTLOG) {
+    const study = (events: { sym: string; i: number }[], offs: number[]) => {
+      const sum = new Map<number, number>();
+      const cnt = new Map<number, number>();
+      for (const ev of events) {
+        const c = series.get(ev.sym);
+        if (!c) continue;
+        const base = c[ev.i]?.price;
+        if (!base) continue;
+        for (const o of offs) {
+          const k = ev.i + o;
+          if (k < 0 || k >= c.length) continue;
+          sum.set(o, (sum.get(o) ?? 0) + ((c[k].price / base - 1) * 100));
+          cnt.set(o, (cnt.get(o) ?? 0) + 1);
+        }
+      }
+      return offs.map((o) => `t${o >= 0 ? "+" : ""}${o}h:${((sum.get(o) ?? 0) / (cnt.get(o) || 1)).toFixed(2)}`).join("  ");
+    };
+    const offs = [-6, -3, -1, 0, 1, 3, 6, 12, 24];
+    console.log(`\n---------- EVENT STUDY (camino de precio %, base=0 en la ejecución) ----------`);
+    console.log(`ENTRADAS momentum (n=${buyEvents.length}):  ${study(buyEvents, offs)}`);
+    console.log(`SALIDAS por STOP  (n=${stopEvents.length}):  ${study(stopEvents, offs)}`);
+    console.log(`Lectura: si tras la ENTRADA (t>0) el precio baja, compra picos; si tras la SALIDA-stop (t>0) sube, vende mínimos.`);
+  }
 }
 
 main().catch((e) => {
