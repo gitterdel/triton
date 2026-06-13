@@ -14,7 +14,7 @@ import "dotenv/config";
 // Identidad de harness: silencia el trade-journal del agente real (worklist 6)
 process.env.TRITON_BACKTEST = "1";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
-import { config } from "../src/config.js";
+import { config, RISK_LIMITS } from "../src/config.js";
 import { decide, momentumScore } from "../src/strategy/engine.js";
 import { applyRisk } from "../src/risk/manager.js";
 import { applyFill, simulatedFee } from "../src/state/portfolio.js";
@@ -385,6 +385,26 @@ async function main() {
     console.log(`ENTRADAS momentum (n=${buyEvents.length}):  ${study(buyEvents, offs)}`);
     console.log(`SALIDAS por STOP  (n=${stopEvents.length}):  ${study(stopEvents, offs)}`);
     console.log(`Lectura: si tras la ENTRADA (t>0) el precio baja, compra picos; si tras la SALIDA-stop (t>0) sube, vende mínimos.`);
+
+    // ESPEJO PERFECTO en los timestamps EXACTOS de las señales (hipótesis del
+    // operador: "vender donde compra, comprar donde vende = ganador"). Mide el
+    // PnL de SHORT en cada BUY y LONG en cada SELL, a fee real RT, varios H.
+    const FEE_RT = RISK_LIMITS.simulatedFeePct * 200; // % ida+vuelta
+    const mirror = (H: number) => {
+      let short = 0, sn = 0, long = 0, ln = 0;
+      for (const ev of buyEvents) {
+        const c = series.get(ev.sym); if (!c || ev.i + H >= c.length) continue;
+        short += -((c[ev.i + H].price / c[ev.i].price - 1) * 100) - FEE_RT; sn++; // short = -ret
+      }
+      for (const ev of stopEvents) {
+        const c = series.get(ev.sym); if (!c || ev.i + H >= c.length) continue;
+        long += ((c[ev.i + H].price / c[ev.i].price - 1) * 100) - FEE_RT; ln++; // long
+      }
+      return `H${H}h: SHORT@compra ${(short / (sn || 1)).toFixed(2)}%/op (acum ${short.toFixed(0)})  ·  LONG@venta ${(long / (ln || 1)).toFixed(2)}%/op (acum ${long.toFixed(0)})`;
+    };
+    console.log(`\n---------- ESPEJO PERFECTO en timestamps exactos (fee real ${FEE_RT.toFixed(1)}% RT) ----------`);
+    for (const H of [6, 24, 48]) console.log(`  ${mirror(H)}`);
+    console.log(`Lectura: si SHORT@compra y LONG@venta son POSITIVOS, hacer lo opuesto en esos instantes gana (¡pero short NO es ejecutable en spot!).`);
   }
 }
 
