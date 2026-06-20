@@ -8,3 +8,6 @@ identity/identity.json
 
 # Backups de configuracion (contienen secretos)
 .env.bak*
+
+# Checklist interno de pre-flight (no exponer en el repo público)
+PREFLIGHT.md
