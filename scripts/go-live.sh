@@ -17,7 +17,12 @@
 # armar el timer del lunes 02:00.
 set -uo pipefail
 
-ROOT="${TRITON_ROOT:-/root/triton}"
+# El agente de competición es el RETADOR (majors), que en el VPS es la
+# instancia triton-challenger. Comparte wallet/credenciales con el campeón →
+# SOLO uno puede ir a live: encendemos el retador y paramos el campeón.
+ROOT="${TRITON_ROOT:-/root/triton-challenger}"
+SERVICE="${TRITON_SERVICE:-triton-challenger}"   # el retador (va a live)
+CHAMPION="${TRITON_CHAMPION:-triton}"            # el campeón (se para)
 ENV="$ROOT/.env"
 DATA="$ROOT/data"
 LOG="$DATA/go-live.log"
@@ -79,9 +84,14 @@ run "rm -f '$DATA/portfolio.json'"
 say "4) Arrancando watcher de failsafes (twak-watch)..."
 run "systemctl enable --now twak-watch"
 
-# ── 5) REINICIAR EL AGENTE ───────────────────────────────────────────────────
-say "5) Reiniciando el agente..."
-run "systemctl restart triton"
+# ── 5) PARAR EL CAMPEÓN (wallet compartida: solo 1 instancia en live) ─────────
+say "5) Parando el campeón ($CHAMPION) — comparte wallet, solo el retador va a live..."
+run "systemctl stop $CHAMPION"
+run "systemctl disable $CHAMPION"
 
-say "===== HECHO. Verifica: 'systemctl status triton', 'journalctl -u triton -f', dashboard retador ====="
+# ── 6) REINICIAR EL RETADOR (el agente de competición) ───────────────────────
+say "6) Reiniciando el retador ($SERVICE)..."
+run "systemctl restart $SERVICE"
+
+say "===== HECHO. Verifica: 'systemctl status $SERVICE', 'journalctl -u $SERVICE -f', dashboard retador ====="
 [ "$CONFIRM" = "1" ] || say "(era DRY-RUN — nada cambiado. Para ejecutar: GO_LIVE_CONFIRM=1 bash scripts/go-live.sh)"
