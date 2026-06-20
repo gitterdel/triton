@@ -28,6 +28,9 @@ DATA="$ROOT/data"
 LOG="$DATA/go-live.log"
 CONFIRM="${GO_LIVE_CONFIRM:-0}"
 FALLBACK_FEE="0.008"   # conservador (media cesta pre-waiver) si la medición falla
+WALLET="${TRITON_WALLET:-0x111Be0cD38B05B56253b4b7B5F3F39f6a64cEfc7}"  # wallet de competición
+RPC="https://bsc-dataseed.binance.org"
+USDT_C="0x55d398326f99059fF775485246999027B3197955"   # BSC-USD (USDT) en BSC
 
 say(){ echo "[$(date -u +%H:%M:%S)] $*" | tee -a "$LOG"; }
 run(){ if [ "$CONFIRM" = "1" ]; then eval "$@"; else say "DRY-RUN » $*"; fi; }
@@ -71,14 +74,30 @@ run "mkdir -p '$BK'"
 for f in portfolio.json equity.json state.json trade-journal.jsonl compliance-attempts.json; do
   run "cp -a '$DATA/$f' '$BK/' 2>/dev/null || true"
 done
-# Reset: curvas/journal/compliance a cero; portfolio se recrea desde balances
-# reales al arrancar en live (la wallet es la fuente de verdad — al go-live
-# debe estar 100% USDT = flat).
+# Reset de curvas/journal/compliance (track record limpio de la carrera):
 run "rm -f '$DATA/equity.json' '$DATA/state.json' '$DATA/trade-journal.jsonl' '$DATA/compliance-attempts.json'"
-run "rm -f '$DATA/portfolio.json'"
-# >>> VERIFICAR EL DOMINGO: confirmar que en LIVE el agente reconcilia el
-#     portfolio desde la wallet real (no asume flat a ciegas). Si lo asume,
-#     dejar portfolio.json reseteado a {cash=balance USDT, positions:[]} a mano.
+# portfolio.json NO se borra. VERIFICADO en el código: loadPortfolio() cae a
+# paperStartingUsd (~1000) si no existe, y el agente NO reconcilia cash desde la
+# wallet en live (checkGas solo mira BNB) → borrarlo descuadraría el capital.
+# Se reescribe con el balance USDT REAL (la wallet al go-live está flat = USDT):
+say "   reseteando portfolio.json al capital REAL de la wallet..."
+if [ "$CONFIRM" = "1" ]; then
+  python3 - "$WALLET" "$RPC" "$USDT_C" "$DATA/portfolio.json" <<'PYEOF'
+import sys, json, urllib.request
+from datetime import datetime, timezone
+wallet, rpc, usdt, out = sys.argv[1:5]
+data = "0x70a08231000000000000000000000000" + wallet[2:].lower()
+req = {"jsonrpc":"2.0","method":"eth_call","params":[{"to":usdt,"data":data},"latest"],"id":1}
+r = urllib.request.urlopen(urllib.request.Request(rpc, json.dumps(req).encode(), {"Content-Type":"application/json"}), timeout=20)
+bal = round(int(json.load(r)["result"],16)/1e18, 2)
+today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+pf = {"cashUsd":bal,"positions":[],"realizedPnlUsd":0,"dailyPnlUsd":0,"dailyPnlDate":today,"history":[],"peakEquityUsd":bal}
+open(out,"w").write(json.dumps(pf,indent=2))
+print(f"   portfolio.json -> cashUsd={bal} USDT (wallet real, flat)")
+PYEOF
+else
+  say "DRY-RUN » (reescribiría portfolio.json con el balance USDT real de la wallet)"
+fi
 
 # ── 4) WATCHER DE FAILSAFES ──────────────────────────────────────────────────
 say "4) Arrancando watcher de failsafes (twak-watch)..."
