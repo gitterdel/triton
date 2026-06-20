@@ -3,7 +3,9 @@
 > **BNB HACK 2026 · Track 1: Autonomous Trading Agents · Track 2: [Strategy Skill](skill/SKILL.md)**
 > Reads CMC signals → decides → signs & executes via Trust Wallet — with an on-chain ERC-8004 identity.
 
-**Live dashboard:** https://triton-dashboard.vercel.app
+**Live dashboard:** https://triton-retador.vercel.app
+
+> **Competition build:** the focused, lower-drawdown variant — the same engine and risk manager documented below, restricted to the highest-liquidity majors via `TEST_ONLY_SYMBOLS`. (A full-basket build runs as an internal A/B.)
 
 ```
 [CMC Agent Hub] ──signals──> [Strategy Engine] ──intent──> [Risk Manager] ──orders──> [TWAK] ──swaps──> [BSC]
