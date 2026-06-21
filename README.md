@@ -65,17 +65,6 @@ Backtest over the last 21 days (hourly CMC data, bear-market window), replaying 
 
 **Positive return (+17 points of alpha) in a full crash window**, on the competition's eligible-token watchlist. Token selection is data-disciplined too: structurally-chosen universe (liquidity, operability, diversity), then consistent strategy-misfit losers benched (DOT, UNI whipsawed momentum in every tested config) and replaced by a resilience pick (ATOM). Triton runs a regime-gated three-module ensemble: MOMENTUM (buys confirmed strength, trailing-stop exits), RANGE (mean reversion, only wakes when token AND global market are sideways) and BREAKOUT (48h-high breaks with volume, only wakes in healthy risk-on markets — validated to do zero harm in bear data, designed to capture bull weeks). The backtest harness drove every decision — it falsified contrarian buy-the-fear, falsified an ungated range module (-6.5%: in a bear, "sideways" is consolidation before breakdown), and validated trend+volume confirmation, falling-knife filters, post-stop cooldowns, and the double-gated ensemble. Data-backed, not curve-fit. Reproduce it: `npm run backtest -- 21`
 
-## Why Triton stands out
-
-Most agents in this space either gamble or hand-wave their risk. Triton is the disciplined, *auditable* one:
-
-- **Rigor, not hope** — every component was *falsified* before it was kept: 25+ rejected hypotheses, walk-forward validation across separate epochs, real measured costs. Data-disciplined, not curve-fit.
-- **Transparent by default** — a live, prop-firm-grade dashboard publishes Sharpe, drawdown and win rate in real time, for anyone to audit.
-- **On-chain accountability** — a real ERC-8004 identity (agent #1335), not an anonymous bot.
-- **Failsafe execution** — native TWAK stop automations sit *below* the agent's own stops; a real-money rehearsal caught and fixed two critical execution bugs before go-live.
-- **All three sponsors, end-to-end** — CoinMarketCap, Trust Wallet Agent Kit and BNB Chain, each load-bearing.
-- **Two tracks, one core** — also submitted as a backtestable [Strategy Skill](skill/SKILL.md) (Track 2).
-
 ## Run it
 
 ```bash
